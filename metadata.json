@@ -1,0 +1,6 @@
+{
+  "name": "Rekap Resep Obat",
+  "description": "Aplikasi rekap resep obat dengan sortir kategori bulanan otomatis, grafik konsumsi, filter tanggal, dan ekspor excel/pdf.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

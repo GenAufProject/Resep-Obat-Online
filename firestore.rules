@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net: Default block all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Main collection: Prescriptions
+    match /prescriptions/{prescriptionId} {
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+        && request.resource.data.userId == request.auth.uid
+        && isValidPrescription(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+        
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && isValidPrescription(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    // --- REUSABLE UTILITIES ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidPrescription(data) {
+      return data.userId is string && data.userId.size() <= 128
+        && data.date is string && data.date.size() == 10
+        && data.medicines is list
+        && data.medicines.size() >= 0 && data.medicines.size() <= 100
+        && (!('doctor' in data) || (data.doctor is string && data.doctor.size() <= 200))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
+        && (!('prescriptionNo' in data) || (data.prescriptionNo is string && data.prescriptionNo.size() <= 100))
+        && (!('patientName' in data) || (data.patientName is string && data.patientName.size() <= 200))
+        && (!('patientAddress' in data) || (data.patientAddress is string && data.patientAddress.size() <= 1000));
+    }
+  }
+}

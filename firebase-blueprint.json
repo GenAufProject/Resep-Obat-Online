@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "Prescription": {
+      "title": "Prescription",
+      "description": "Represents a medicine prescription recap entry",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique prescription identifier"
+        },
+        "userId": {
+          "type": "string",
+          "description": "User UID who owns this prescription"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date of prescription in YYYY-MM-DD format"
+        },
+        "doctor": {
+          "type": "string",
+          "description": "Doctor's name"
+        },
+        "notes": {
+          "type": "string",
+          "description": "General prescription notes (e.g., after food, before sleep)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        },
+        "medicines": {
+          "type": "array",
+          "description": "List of drugs included in this prescription, strictly limited to 20 items for scale safety",
+          "items": {
+            "type": "object",
+            "properties": {
+              "nama": {
+                "type": "string",
+                "description": "Name of the medicine"
+              },
+              "kategori": {
+                "type": "string",
+                "description": "Category of the medicine"
+              },
+              "dosis": {
+                "type": "string",
+                "description": "Dosage details (e.g. 3x1 tablet)"
+              },
+              "jumlah": {
+                "type": "integer",
+                "description": "Total quantity of the item"
+              }
+            },
+            "required": ["nama", "kategori", "dosis", "jumlah"]
+          }
+        }
+      },
+      "required": ["userId", "date", "medicines"]
+    }
+  },
+  "firestore": {
+    "prescriptions/{prescriptionId}": {
+      "schema": "Prescription",
+      "description": "Collection of prescriptions created by authenticated users"
+    }
+  }
+}

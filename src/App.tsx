@@ -23,7 +23,7 @@ import {
   serverTimestamp,
   writeBatch
 } from "firebase/firestore";
-import { Prescription, Medicine, MEDICINE_CATEGORIES } from "./types";
+import { Prescription, Medicine, MEDICINE_CATEGORIES, getCategoryByMedicineName } from "./types";
 import { exportToPDF, exportToExcel } from "./utils/export";
 import { SyncBanner } from "./components/SyncBanner";
 import { PrescriptionForm } from "./components/PrescriptionForm";
@@ -50,6 +50,27 @@ import {
   FolderSync,
   Upload
 } from "lucide-react";
+
+function fixPrescriptionCategories(prescriptionsList: Prescription[]): { updatedList: Prescription[], changedCount: number } {
+  let changedCount = 0;
+  const updatedList = prescriptionsList.map(p => {
+    let prescriptionModified = false;
+    const updatedMeds = p.medicines.map(m => {
+      const correctCategory = getCategoryByMedicineName(m.nama);
+      if (correctCategory && m.kategori !== correctCategory) {
+        prescriptionModified = true;
+        return { ...m, kategori: correctCategory };
+      }
+      return m;
+    });
+    if (prescriptionModified) {
+      changedCount++;
+      return { ...p, medicines: updatedMeds };
+    }
+    return p;
+  });
+  return { updatedList, changedCount };
+}
 
 export default function App() {
   // Authentication states
@@ -87,11 +108,13 @@ export default function App() {
     if (local) {
       try {
         const parsed = JSON.parse(local) as Prescription[];
+        // Fix loaded local storage medicine categories to "Obat-obat Tertentu" if they match the specified drug names
+        const { updatedList: fixedList, changedCount } = fixPrescriptionCategories(parsed);
         // Filter out and effectively delete any local prescription data outside of the 5 categories
-        const filtered = parsed.filter(p => p.medicines && p.medicines.every(m => m.kategori && MEDICINE_CATEGORIES.includes(m.kategori)));
+        const filtered = fixedList.filter(p => p.medicines && p.medicines.every(m => m.kategori && MEDICINE_CATEGORIES.includes(m.kategori)));
         setPrescriptions(filtered);
         setLocalPrescriptionsCount(filtered.length);
-        if (filtered.length !== parsed.length) {
+        if (filtered.length !== parsed.length || changedCount > 0) {
           localStorage.setItem("rekap_resep_lokal", JSON.stringify(filtered));
         }
       } catch (err) {
@@ -128,8 +151,14 @@ export default function App() {
         if (localData) {
           try {
             const parsed = JSON.parse(localData) as Prescription[];
-            if (parsed.length > 0) {
-              setLocalPrescriptionsCount(parsed.length);
+            const { updatedList: fixedList, changedCount } = fixPrescriptionCategories(parsed);
+            // Filter out items missing prescriptionNo or with invalid medicines
+            const filtered = fixedList.filter(p => p.prescriptionNo && p.prescriptionNo.trim() !== "" && p.medicines && p.medicines.every(m => m.kategori && MEDICINE_CATEGORIES.includes(m.kategori)));
+            if (filtered.length !== parsed.length || changedCount > 0) {
+              localStorage.setItem("rekap_resep_lokal", JSON.stringify(filtered));
+            }
+            if (filtered.length > 0) {
+              setLocalPrescriptionsCount(filtered.length);
               setShowMergePrompt(true);
             }
           } catch (e) {
@@ -150,9 +179,10 @@ export default function App() {
       if (local) {
         try {
           const parsed = JSON.parse(local) as Prescription[];
-          const filtered = parsed.filter(p => p.medicines && p.medicines.every(m => m.kategori && MEDICINE_CATEGORIES.includes(m.kategori)));
+          const { updatedList: fixedList, changedCount } = fixPrescriptionCategories(parsed);
+          const filtered = fixedList.filter(p => p.prescriptionNo && p.prescriptionNo.trim() !== "" && p.medicines && p.medicines.every(m => m.kategori && MEDICINE_CATEGORIES.includes(m.kategori)));
           setPrescriptions(filtered);
-          if (filtered.length !== parsed.length) {
+          if (filtered.length !== parsed.length || changedCount > 0) {
             localStorage.setItem("rekap_resep_lokal", JSON.stringify(filtered));
           }
         } catch {
@@ -183,9 +213,12 @@ export default function App() {
           });
         });
         
-        // Filter out and clean up any prescriptions outside the 5 categories
-        const validList = fetched.filter(p => p.medicines && p.medicines.every(m => m.kategori && MEDICINE_CATEGORIES.includes(m.kategori)));
-        const invalidList = fetched.filter(p => !p.medicines || p.medicines.some(m => !m.kategori || !MEDICINE_CATEGORIES.includes(m.kategori)));
+        // Run category fixer on fetched cloud records to auto-assign "Obat-obat Tertentu" if needed
+        const { updatedList: fixedList, changedCount } = fixPrescriptionCategories(fetched);
+
+        // Filter out and clean up any prescriptions missing a prescription number or having invalid categories
+        const validList = fixedList.filter(p => p.prescriptionNo && p.prescriptionNo.trim() !== "" && p.medicines && p.medicines.every(m => m.kategori && MEDICINE_CATEGORIES.includes(m.kategori)));
+        const invalidList = fixedList.filter(p => !p.prescriptionNo || p.prescriptionNo.trim() === "" || !p.medicines || p.medicines.some(m => !m.kategori || !MEDICINE_CATEGORIES.includes(m.kategori)));
         
         // Sort client-side by date descending to completely bypass composite index requirements
         validList.sort((a, b) => b.date.localeCompare(a.date));
@@ -196,14 +229,27 @@ export default function App() {
         localStorage.setItem(`rekap_resep_cloud_${user.uid}`, JSON.stringify(validList));
         setDbLoading(false);
 
-        // Actively delete invalid real-time collections from Firestore
-        if (invalidList.length > 0) {
-          console.warn(`Menghapus ${invalidList.length} resep dari Cloud karena memiliki kategori obat di luar 5 tipe standar.`);
-          invalidList.forEach((inv) => {
-            deleteDoc(doc(db, "prescriptions", inv.id))
-              .then(() => console.log(`Berhasil membersihkan resep dengan kategori obat tidak valid: ${inv.id}`))
-              .catch(err => console.error("Gagal menghapus resep tidak valid dari cloud:", err));
+        // If some prescriptions were updated to correct categories, push those updates back to the Cloud in the background
+        if (changedCount > 0 && isFirebaseConfigured && db && user && user.uid !== "guest_user") {
+          const prescriptionsToUpdate = fixedList.filter((item, index) => {
+            const originalObj = fetched[index];
+            return JSON.stringify(item.medicines) !== JSON.stringify(originalObj.medicines);
           });
+          
+          if (prescriptionsToUpdate.length > 0) {
+            console.log(`Migrating ${prescriptionsToUpdate.length} cloud records to correct medicine categories...`);
+            const batch = writeBatch(db);
+            prescriptionsToUpdate.forEach(updatedPresc => {
+              const docRef = doc(db, "prescriptions", updatedPresc.id);
+              batch.update(docRef, {
+                medicines: updatedPresc.medicines,
+                updatedAt: serverTimestamp()
+              });
+            });
+            batch.commit()
+              .then(() => console.log("Cloud category migration completed successfully."))
+              .catch(err => console.error("Cloud category migration failed:", err));
+          }
         }
       },
       (error) => {
@@ -224,9 +270,24 @@ export default function App() {
       if (!localData) return;
 
       const parsed = JSON.parse(localData) as Prescription[];
+      const { updatedList: fixedList } = fixPrescriptionCategories(parsed);
+      const validToMerge = fixedList.filter(p => p.prescriptionNo && p.prescriptionNo.trim() !== "" && p.medicines && p.medicines.every(m => m.kategori && MEDICINE_CATEGORIES.includes(m.kategori)));
+
+      if (validToMerge.length === 0) {
+        localStorage.removeItem("rekap_resep_lokal");
+        setLocalPrescriptionsCount(0);
+        setShowMergePrompt(false);
+        setCustomAlert({
+          type: "success",
+          title: "Selesai Bersih-bersih",
+          message: "Tidak ada resep lokal valid dengan nomor resep untuk disinkronisasikan."
+        });
+        return;
+      }
+
       const batchRef = writeBatch(db);
 
-      parsed.forEach((item) => {
+      validToMerge.forEach((item) => {
         // Generate a random ID for Firestore
         const newId = "prescription_" + Date.now().toString() + "_" + Math.random().toString(36).substr(2, 5);
         const docRef = doc(db, "prescriptions", newId);
@@ -254,7 +315,7 @@ export default function App() {
       setCustomAlert({
         type: "success",
         title: "Sinkronisasi Berhasil",
-        message: `Berhasil mensinkronisasi ${parsed.length} resep lokal ke akun Cloud Anda secara otomatis!`
+        message: `Berhasil mensinkronisasi ${validToMerge.length} resep lokal ke akun Cloud Anda secara otomatis!`
       });
     } catch (err) {
       console.error("Cloud merge failed:", err);
@@ -456,9 +517,9 @@ export default function App() {
           const cleanDate = typeof date === "string" ? date.split(/[T\s]/)[0] : new Date().toISOString().split("T")[0];
           
           const doctor = item.doctor || item.dokter || "";
-          const prescriptionNo = item.prescriptionno || item.prescription_no || item.noresep || item.no || "";
-          const patientName = item.patientname || item.patient_name || item.namapasien || item.pasien || "";
-          const patientAddress = item.patientaddress || item.patient_address || item.alamatpasien || item.alamat || "";
+          const prescriptionNo = item.prescriptionNo || item.prescriptionno || item.prescription_no || item.noresep || item.no || "";
+          const patientName = item.patientName || item.patientname || item.patient_name || item.namapasien || item.pasien || "";
+          const patientAddress = item.patientAddress || item.patientaddress || item.patient_address || item.alamatpasien || item.alamat || "";
           const notes = item.notes || item.catatan || "";
           
           let medicines: any[] = [];
@@ -481,12 +542,21 @@ export default function App() {
           }
           
           const formattedMedicines = (medicines || []).map((med: any) => {
-            let kategori = med.kategori || med.category || "Lain-lain";
+            const nama = med.nama || med.name || "Obat Tanpa Nama";
+            const autoCategory = getCategoryByMedicineName(nama);
+            
+            let kategori = med.kategori || med.category || autoCategory || "Lain-lain";
+            
+            // If default/undefined/Lain-lain but fits our target OOT drugs
+            if (autoCategory && (kategori === "Lain-lain" || !kategori)) {
+              kategori = autoCategory;
+            }
+
             if (!MEDICINE_CATEGORIES.includes(kategori)) {
               kategori = "Lain-lain";
             }
             return {
-              nama: med.nama || med.name || "Obat Tanpa Nama",
+              nama: nama,
               kategori: kategori,
               dosis: med.dosis || med.dosage || "",
               jumlah: parseFloat(med.jumlah || med.quantity || med.qty || "0") || 0
@@ -634,18 +704,20 @@ export default function App() {
         return false;
       }
 
-      // Query (Name of doctor / drug / category search)
+      // Query (Search based on patient name, prescription no, doctor, medicines, or notes)
       if (searchQuery.trim()) {
         const queryLower = searchQuery.toLowerCase().trim();
         const docMatch = p.doctor?.toLowerCase().includes(queryLower);
         const notesMatch = p.notes?.toLowerCase().includes(queryLower);
+        const patientMatch = p.patientName?.toLowerCase().includes(queryLower);
+        const prescriptionNoMatch = p.prescriptionNo?.toLowerCase().includes(queryLower);
         const medsMatch = p.medicines.some(
           (m) =>
             m.nama.toLowerCase().includes(queryLower) ||
             m.kategori.toLowerCase().includes(queryLower)
         );
 
-        if (!docMatch && !medsMatch && !notesMatch) {
+        if (!docMatch && !medsMatch && !notesMatch && !patientMatch && !prescriptionNoMatch) {
           return false;
         }
       }
@@ -958,13 +1030,13 @@ export default function App() {
                     {/* Text keywords */}
                     <div>
                       <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1.5">
-                        Cari Obat / Dokter / Catatan
+                        Cari Obat / Dokter / Pasien / No. Resep
                       </label>
                       <div className="relative">
                         <input
                           id="search-filter-query"
                           type="text"
-                          placeholder="Ketik kata kunci..."
+                          placeholder="Cari nama pasien, nomor resep, dokter, obat..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className="w-full bg-[#fbfcfa] rounded-xl border border-[#e2eae4] py-2.5 pl-8 pr-3 text-xs text-slate-800 focus:outline-none focus:border-[#8fc8be] focus:ring-1 focus:ring-[#8fc8be]"

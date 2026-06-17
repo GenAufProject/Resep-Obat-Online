@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Medicine, Prescription, MEDICINE_CATEGORIES } from "@/src/types";
+import { Medicine, Prescription, MEDICINE_CATEGORIES, getCategoryByMedicineName } from "@/src/types";
 import { Plus, Trash2, Calendar, FileText, User, Tag, HelpCircle, Save, X, Home } from "lucide-react";
 
 interface PrescriptionFormProps {
@@ -80,6 +80,14 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
       ...updated[index],
       [field]: value
     };
+    
+    if (field === "nama" && typeof value === "string") {
+      const autoCategory = getCategoryByMedicineName(value);
+      if (autoCategory) {
+        updated[index].kategori = autoCategory;
+      }
+    }
+    
     setMedicines(updated);
     setErrors(""); // Clear errors on modification
   };

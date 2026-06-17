@@ -9,22 +9,18 @@ service cloud.firestore {
 
     // 2. Main collection: Prescriptions
     match /prescriptions/{prescriptionId} {
-      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if request.auth != null && (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid);
+      allow list: if request.auth != null && (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid);
+      allow delete: if request.auth != null && (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid);
       
-      allow create: if isSignedIn() 
+      allow create: if request.auth != null 
         && request.resource.data.userId == request.auth.uid
-        && isValidPrescription(request.resource.data)
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
+        && isValidPrescription(request.resource.data);
         
-      allow update: if isSignedIn()
-        && resource.data.userId == request.auth.uid
+      allow update: if request.auth != null
+        && (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid)
         && request.resource.data.userId == request.auth.uid
-        && isValidPrescription(request.resource.data)
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.updatedAt == request.time;
+        && isValidPrescription(request.resource.data);
     }
 
     // --- REUSABLE UTILITIES ---

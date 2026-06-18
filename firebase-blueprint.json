@@ -1,5 +1,91 @@
 {
   "entities": {
+    "PioKieRecord": {
+      "title": "PioKieRecord",
+      "description": "Represents a Patient Information Service and Counseling documentation record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique record identifier"
+        },
+        "userId": {
+          "type": "string",
+          "description": "User UID who owns this clinical documentation"
+        },
+        "nomorDokumentasi": {
+          "type": "string",
+          "description": "Automatically formatted document identifier (e.g., PIO-VI-01-2026)"
+        },
+        "jenisDokumentasi": {
+          "type": "string",
+          "enum": ["PIO", "KIE"],
+          "description": "Classification of documentation (PIO or KIE)"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date of clinical consultation in YYYY-MM-DD format"
+        },
+        "namaPasien": {
+          "type": "string",
+          "description": "Name of clinical patient"
+        },
+        "umur": {
+          "type": "string",
+          "description": "Age of patient in years"
+        },
+        "beratBadan": {
+          "type": "string",
+          "description": "Weight of patient in Kg"
+        },
+        "jenisKelamin": {
+          "type": "string",
+          "enum": ["Laki-laki", "Perempuan"],
+          "description": "Gender of patient"
+        },
+        "hamilMenyusui": {
+          "type": "string",
+          "description": "Maternal physiological conditions"
+        },
+        "riwayatAlergi": {
+          "type": "string",
+          "description": "Documented medical allergy history of patient"
+        },
+        "keluhanPertanyaan": {
+          "type": "string",
+          "description": "Detailed clinical signs, symptoms, or queries raised"
+        },
+        "jawabanTindakLanjut": {
+          "type": "string",
+          "description": "Pharmacist's expert clinical communication guidance and resolution"
+        },
+        "referensi": {
+          "type": "string",
+          "description": "Referential references, medical guidelines, etc."
+        },
+        "metode": {
+          "type": "string",
+          "enum": ["Tatap Muka", "Telepon", "Video Call"],
+          "description": "Clinical contact channel"
+        },
+        "namaApoteker": {
+          "type": "string",
+          "description": "Registered Pharmacist certifying the documentation"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server initialization timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": ["userId", "nomorDokumentasi", "jenisDokumentasi", "date", "namaPasien", "jenisKelamin", "keluhanPertanyaan", "jawabanTindakLanjut", "metode", "namaApoteker"]
+    },
     "Prescription": {
       "title": "Prescription",
       "description": "Represents a medicine prescription recap entry",
@@ -70,6 +156,10 @@
     "prescriptions/{prescriptionId}": {
       "schema": "Prescription",
       "description": "Collection of prescriptions created by authenticated users"
+    },
+    "pio_kie/{recordId}": {
+      "schema": "PioKieRecord",
+      "description": "Collection of clinical Patient Information and Counseling logs"
     }
   }
 }

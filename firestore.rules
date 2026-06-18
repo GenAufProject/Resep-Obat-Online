@@ -9,23 +9,53 @@ service cloud.firestore {
 
     // 2. Main collection: Prescriptions
     match /prescriptions/{prescriptionId} {
-      allow get: if request.auth != null && (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid);
-      allow list: if request.auth != null && (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid);
-      allow delete: if request.auth != null && (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid);
+      allow read, delete: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid);
       
       allow create: if request.auth != null 
         && request.resource.data.userId == request.auth.uid
         && isValidPrescription(request.resource.data);
         
       allow update: if request.auth != null
-        && (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid)
+        && (resource == null || resource.data.userId == request.auth.uid)
         && request.resource.data.userId == request.auth.uid
         && isValidPrescription(request.resource.data);
+    }
+
+    // 3. Main collection: PioKie Logs
+    match /pio_kie/{recordId} {
+      allow read, delete: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid);
+      
+      allow create: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid
+        && isValidPioKie(request.resource.data);
+        
+      allow update: if request.auth != null
+        && (resource == null || resource.data.userId == request.auth.uid)
+        && request.resource.data.userId == request.auth.uid
+        && isValidPioKie(request.resource.data);
     }
 
     // --- REUSABLE UTILITIES ---
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function isValidPioKie(data) {
+      return data.userId is string && data.userId.size() <= 128
+        && data.nomorDokumentasi is string && data.nomorDokumentasi.size() <= 100
+        && data.jenisDokumentasi is string && (data.jenisDokumentasi == "PIO" || data.jenisDokumentasi == "KIE")
+        && data.date is string && data.date.size() == 10
+        && data.namaPasien is string && data.namaPasien.size() <= 200
+        && data.jenisKelamin is string && (data.jenisKelamin == "Laki-laki" || data.jenisKelamin == "Perempuan")
+        && data.keluhanPertanyaan is string && data.keluhanPertanyaan.size() <= 10000
+        && data.jawabanTindakLanjut is string && data.jawabanTindakLanjut.size() <= 10000
+        && data.metode is string && (data.metode == "Tatap Muka" || data.metode == "Telepon" || data.metode == "Video Call")
+        && data.namaApoteker is string && data.namaApoteker.size() <= 200
+        && (!("umur" in data) || (data.umur is string && data.umur.size() <= 50))
+        && (!("beratBadan" in data) || (data.beratBadan is string && data.beratBadan.size() <= 50))
+        && (!("hamilMenyusui" in data) || (data.hamilMenyusui is string && data.hamilMenyusui.size() <= 200))
+        && (!("riwayatAlergi" in data) || (data.riwayatAlergi is string && data.riwayatAlergi.size() <= 200))
+        && (!("referensi" in data) || (data.referensi is string && data.referensi.size() <= 500));
     }
 
     function isValidPrescription(data) {

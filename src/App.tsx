@@ -32,6 +32,8 @@ import { MonthlyAnalytics } from "./components/MonthlyAnalytics";
 import { MonthlyReport } from "./components/MonthlyReport";
 import { LoginForm } from "./components/LoginForm";
 import { DynamicCapsuleIcon } from "./components/DynamicCapsuleIcon";
+import { PioKieManager } from "./components/PioKieManager";
+import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, 
   Search, 
@@ -48,7 +50,9 @@ import {
   CheckCircle2, 
   RefreshCw,
   FolderSync,
-  Upload
+  Upload,
+  Sun,
+  Moon
 } from "lucide-react";
 
 function fixPrescriptionCategories(prescriptionsList: Prescription[]): { updatedList: Prescription[], changedCount: number } {
@@ -73,6 +77,25 @@ function fixPrescriptionCategories(prescriptionsList: Prescription[]): { updated
 }
 
 export default function App() {
+  // Dark Mode preference
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem("rekap_resep_theme");
+    if (saved) {
+      return saved === "dark";
+    }
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("rekap_resep_theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("rekap_resep_theme", "light");
+    }
+  }, [isDarkMode]);
+
   // Authentication states
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
@@ -82,7 +105,7 @@ export default function App() {
   const [dbLoading, setDbLoading] = useState<boolean>(false);
 
   // UI state managers
-  const [activeTab, setActiveTab] = useState<"daftar" | "grafik" | "laporan" | "panduan">("daftar");
+  const [activeTab, setActiveTab] = useState<"daftar" | "pio_kie" | "grafik" | "laporan" | "panduan">("daftar");
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [editPrescription, setEditPrescription] = useState<Prescription | null>(null);
 
@@ -829,57 +852,81 @@ export default function App() {
             </div>
           </div>
 
-          {/* Navigation Tab buttons */}
-          <nav className="flex flex-wrap items-center bg-brand-light/30 p-1.5 rounded-2xl border border-brand-light">
+          {/* Navigation Tab buttons and Theme Switcher */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <nav className="flex flex-wrap items-center bg-brand-light/30 p-1.5 rounded-2xl border border-brand-light">
+              <button
+                id="tab-history"
+                onClick={() => setActiveTab("daftar")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === "daftar"
+                    ? "bg-brand-medium text-white shadow-md border border-brand-medium/50"
+                    : "text-brand-dark hover:bg-brand-light/40 hover:text-brand-medium"
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                Daftar Resep & Cari
+              </button>
+              <button
+                id="tab-pio-kie"
+                onClick={() => setActiveTab("pio_kie")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === "pio_kie"
+                    ? "bg-brand-medium text-white shadow-md border border-brand-medium/50"
+                    : "text-brand-dark hover:bg-brand-light/40 hover:text-brand-medium"
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                PIO dan KIE
+              </button>
+              <button
+                id="tab-analytics"
+                onClick={() => setActiveTab("grafik")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === "grafik"
+                    ? "bg-brand-medium text-white shadow-md border border-brand-medium/50"
+                    : "text-brand-dark hover:bg-brand-light/40 hover:text-brand-medium"
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                Grafik & Kategori
+              </button>
+              <button
+                id="tab-monthly-report"
+                onClick={() => setActiveTab("laporan")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === "laporan"
+                    ? "bg-brand-medium text-white shadow-md border border-brand-medium/50"
+                    : "text-brand-dark hover:bg-brand-light/40 hover:text-brand-medium"
+                }`}
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                Laporan Bulanan
+              </button>
+              <button
+                id="tab-info"
+                onClick={() => setActiveTab("panduan")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === "panduan"
+                    ? "bg-brand-medium text-white shadow-md border border-brand-medium/50"
+                    : "text-brand-dark hover:bg-brand-light/40 hover:text-brand-medium"
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                Panduan
+              </button>
+            </nav>
+
             <button
-              id="tab-history"
-              onClick={() => setActiveTab("daftar")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                activeTab === "daftar"
-                  ? "bg-brand-medium text-white shadow-md border border-brand-medium/50"
-                  : "text-brand-dark hover:bg-brand-light/40 hover:text-brand-medium"
-              }`}
+              id="theme-toggle-btn"
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              title={isDarkMode ? "Aktifkan Mode Terang" : "Aktifkan Mode Gelap"}
+              className="p-2.5 rounded-2xl bg-brand-light/35 dark:bg-brand-medium/20 text-brand-dark dark:text-brand-light hover:bg-brand-medium hover:text-white dark:hover:bg-brand-medium transition-all duration-200 cursor-pointer shadow-xs flex items-center justify-center border border-brand-light dark:border-brand-medium/30 shrink-0"
+              aria-label="Toggle theme"
             >
-              <Calendar className="w-3.5 h-3.5" />
-              Daftar Resep & Cari
+              {isDarkMode ? <Sun className="w-4.5 h-4.5 text-amber-500 animate-[spin_10s_linear_infinite]" /> : <Moon className="w-4.5 h-4.5" />}
             </button>
-            <button
-              id="tab-analytics"
-              onClick={() => setActiveTab("grafik")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                activeTab === "grafik"
-                  ? "bg-brand-medium text-white shadow-md border border-brand-medium/50"
-                  : "text-brand-dark hover:bg-brand-light/40 hover:text-brand-medium"
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5" />
-              Grafik & Kategori
-            </button>
-            <button
-              id="tab-monthly-report"
-              onClick={() => setActiveTab("laporan")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                activeTab === "laporan"
-                  ? "bg-brand-medium text-white shadow-md border border-brand-medium/50"
-                  : "text-brand-dark hover:bg-brand-light/40 hover:text-brand-medium"
-              }`}
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              Laporan Bulanan
-            </button>
-            <button
-              id="tab-info"
-              onClick={() => setActiveTab("panduan")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                activeTab === "panduan"
-                  ? "bg-brand-medium text-white shadow-md border border-brand-medium/50"
-                  : "text-brand-dark hover:bg-brand-light/40 hover:text-brand-medium"
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              Panduan
-            </button>
-          </nav>
+          </div>
         </div>
       </header>
 
@@ -906,8 +953,16 @@ export default function App() {
             )}
 
             {/* View Switching Router */}
-            {activeTab === "daftar" && (
-              <div className="space-y-6">
+            <AnimatePresence mode="wait">
+              {activeTab === "daftar" && (
+                <motion.div
+                  key="daftar"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.22, ease: "easeOut" }}
+                  className="space-y-6"
+                >
                 
                 {/* Search & Filtration Widget Card */}
                 <div className="bg-white border border-[#e6ece7] p-5 rounded-2xl shadow-[0_4px_24px_-4px_rgba(130,165,145,0.08)] space-y-4">
@@ -1137,19 +1192,60 @@ export default function App() {
                     )}
                   </div>
                 )}
-              </div>
+              </motion.div>
+            )}
+
+            {activeTab === "pio_kie" && (
+              <motion.div
+                key="pio_kie"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+              >
+                <PioKieManager 
+                  user={user} 
+                  db={db} 
+                  isFirebaseReady={isFirebaseConfigured} 
+                  setCustomAlert={setCustomAlert} 
+                />
+              </motion.div>
             )}
 
             {activeTab === "grafik" && (
-              <MonthlyAnalytics prescriptions={prescriptions} />
+              <motion.div
+                key="grafik"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+              >
+                <MonthlyAnalytics prescriptions={prescriptions} />
+              </motion.div>
             )}
 
             {activeTab === "laporan" && (
-              <MonthlyReport prescriptions={prescriptions} />
+              <motion.div
+                key="laporan"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+              >
+                <MonthlyReport prescriptions={prescriptions} />
+              </motion.div>
             )}
 
             {activeTab === "panduan" && (
-              <div id="guidelines-card" className="bg-white border border-[#e6ece7] p-6 sm:p-8 rounded-2xl max-w-3xl mx-auto space-y-6 shadow-[0_4px_24px_-4px_rgba(130,165,145,0.08)]">
+              <motion.div 
+                id="guidelines-card" 
+                key="panduan"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="bg-white border border-[#e6ece7] p-6 sm:p-8 rounded-2xl max-w-3xl mx-auto space-y-6 shadow-[0_4px_24px_-4px_rgba(130,165,145,0.08)]"
+              >
                 <div className="flex items-center gap-3 border-b border-[#eff3ef] pb-4">
                   <div className="bg-[#eef5f2] p-2.5 rounded-xl text-[#3b7a6b]">
                     <BookOpen className="w-6 h-6" />
@@ -1223,8 +1319,9 @@ export default function App() {
                     Tercatat secara transparan. Keamanan database didukung penuh oleh enkripsi transit SSL serta aturan Firestore Fortress Security Rules bersertifikasi enkripsi zero-breach.
                   </div>
                 </div>
-              </div>
+              </motion.div>
             )}
+          </AnimatePresence>
 
           </div>
         )}

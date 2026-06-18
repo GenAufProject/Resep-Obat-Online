@@ -7,3 +7,141 @@
   --color-brand-yellow: #ffb30f;
   --color-brand-light: #fdf0d5;
 }
+
+/* Eye-safe, energy-saving healthcare dark mode theme styles */
+.dark {
+  color-scheme: dark;
+  
+  body,
+  #recipe-recap-app {
+    background-color: #040c0e !important;
+    color: #e6f0ed !important;
+  }
+  
+  header,
+  footer,
+  #theme-toggle-btn,
+  #prescription-card-container,
+  #pio-kie-form-card,
+  #guidelines-card,
+  #recipe-form-container,
+  .bg-white,
+  .bg-slate-50,
+  .bg-[#f8fbfa],
+  .bg-[#fbfcfa],
+  .bg-slate-50\/50,
+  [id^="prescription-card-"],
+  [id^="pio-kie-card-"] {
+    background-color: #081d22 !important;
+    color: #e6f0ed !important;
+    border-color: rgba(15, 62, 70, 0.5) !important;
+  }
+  
+  .border,
+  .border-2,
+  .border-b,
+  .border-b-2,
+  .border-t,
+  .border-[#e6ece7],
+  .border-[#e2eae4],
+  .border-[#eff3ef],
+  .border-[#dfd1af],
+  .border-brand-light {
+    border-color: rgba(15, 62, 70, 0.45) !important;
+  }
+  
+  input,
+  select,
+  textarea {
+    background-color: #06151a !important;
+    color: #f0fbf8 !important;
+    border-color: rgba(15, 62, 70, 0.6) !important;
+  }
+  
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: #8fc8be !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px rgba(143, 200, 190, 0.25) !important;
+  }
+  
+  /* Text overrides for headings */
+  .text-brand-dark,
+  h1, h2, h3, h4, h5, h6,
+  .text-slate-800,
+  .text-[#003b46] {
+    color: #9fe2bf !important;
+  }
+  
+  .text-slate-500,
+  .text-slate-600,
+  .text-slate-700,
+  p {
+    color: #94b2af !important;
+  }
+
+  .bg-brand-light\/30 {
+    background-color: rgba(7, 87, 91, 0.15) !important;
+  }
+  
+  .bg-[#f0f6f3],
+  .bg-slate-100 {
+    background-color: #071c21 !important;
+    color: #a0eed0 !important;
+    border-color: rgba(15, 62, 70, 0.3) !important;
+  }
+
+  div[class*="fixed inset-0"] > div {
+    background-color: #071c21 !important;
+    border: 2px solid rgba(15, 62, 70, 0.6) !important;
+    color: #e6f0ed !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6) !important;
+  }
+
+  .bg-white.text-slate-800,
+  button.bg-white {
+    background-color: #081d22 !important;
+    color: #a0eed0 !important;
+    border-color: rgba(15, 62, 70, 0.45) !important;
+  }
+  
+  button.bg-white:hover {
+    background-color: #0a252b !important;
+  }
+
+  .bg-brand-medium {
+    background-color: #07575b !important;
+    color: #ffffff !important;
+  }
+  
+  /* Form info box styles inside Pio-Kie and Prescription Form */
+  .bg-[#f9fbf9] {
+    background-color: #06161b !important;
+  }
+
+  /* Support Recharts styles */
+  .recharts-text {
+    fill: #aa8620 !important;
+  }
+  
+  .recharts-cartesian-grid-horizontal line,
+  .recharts-cartesian-grid-vertical line {
+    stroke: rgba(15, 62, 70, 0.3) !important;
+  }
+  
+  .recharts-default-tooltip {
+    background-color: #06151a !important;
+    border-color: rgba(15, 62, 70, 0.6) !important;
+    color: #f0fbf8 !important;
+  }
+  
+  /* Status tags */
+  .text-emerald-600 {
+    color: #4ade80 !important;
+  }
+  .bg-emerald-50 {
+    background-color: rgba(16, 185, 129, 0.1) !important;
+  }
+}
+

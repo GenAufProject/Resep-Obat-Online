@@ -34,7 +34,7 @@ export const PrescriptionCard: React.FC<PrescriptionCardProps> = ({
   return (
     <div
       id={`prescription-card-${prescription.id}`}
-      className="bg-white border-2 border-brand-light p-5 rounded-2xl hover:border-brand-medium duration-200 shadow-[0_4px_24px_-4px_rgba(0,59,70,0.06)] hover:shadow-[0_8px_32px_-4px_rgba(0,59,70,0.12)] space-y-4 relative flex flex-col justify-between"
+      className="bg-white border-2 border-brand-light p-5 rounded-2xl hover:border-brand-medium transition-all duration-300 hover:scale-[1.015] hover:-translate-y-1 shadow-[0_4px_24px_-4px_rgba(0,59,70,0.06)] hover:shadow-[0_12px_40px_-6px_rgba(0,59,70,0.14)] space-y-4 relative flex flex-col justify-between"
     >
       {/* Top row Info */}
       <div className="space-y-3">

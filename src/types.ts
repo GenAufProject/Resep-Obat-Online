@@ -118,3 +118,62 @@ export function getCategoryByMedicineName(nama: string): string | null {
 
   return null;
 }
+
+export interface PioKieRecord {
+  id: string;
+  userId?: string;
+  nomorDokumentasi: string; // Format: PIO-VI-01-2026 atau KIE-VI-01-2026
+  jenisDokumentasi: "PIO" | "KIE";
+  date: string; // format YYYY-MM-DD
+  
+  // Data Pasien
+  namaPasien: string;
+  umur?: string; // Opsional
+  beratBadan?: string; // Opsional
+  jenisKelamin: "Laki-laki" | "Perempuan";
+  hamilMenyusui?: string; // Opsional
+
+  riwayatAlergi?: string;
+  keluhanPertanyaan: string; // Textarea lebar
+  jawabanTindakLanjut: string; // Textarea lebar
+  referensi?: string; // Opsional
+  metode: "Tatap Muka" | "Telepon" | "Video Call"; 
+  namaApoteker: string; // Stamp / TTD Apoteker
+  
+  createdAt?: string | Date | any;
+  updatedAt?: string | Date | any;
+}
+
+export function getRomanNumeral(monthNum: number): string {
+  const romanArray = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+  return romanArray[monthNum - 1] || "I";
+}
+
+export function generatePioKieNumber(
+  jenis: "PIO" | "KIE",
+  dateStr: string, // YYYY-MM-DD
+  existingRecords: PioKieRecord[]
+): string {
+  if (!dateStr) dateStr = new Date().toISOString().split("T")[0];
+  const parts = dateStr.split("-");
+  const year = parseInt(parts[0]) || 2026;
+  const month = parseInt(parts[1]) || 6;
+
+  // Format month to Roman
+  const romanMonth = getRomanNumeral(month);
+
+  // Filter existing records by same jenis, month, and year to find the next counter
+  const samePeriodRecords = existingRecords.filter((rec) => {
+    if (rec.jenisDokumentasi !== jenis) return false;
+    const rParts = (rec.date || "").split("-");
+    const rYear = parseInt(rParts[0]);
+    const rMonth = parseInt(rParts[1]);
+    return rYear === year && rMonth === month;
+  });
+
+  const nextCounter = samePeriodRecords.length + 1;
+  const paddedCounter = String(nextCounter).padStart(2, "0");
+
+  return `${jenis}-${romanMonth}-${paddedCounter}-${year}`;
+}
+

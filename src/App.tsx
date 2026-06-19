@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
   db, 
   auth, 
@@ -12,6 +12,7 @@ import {
 } from "firebase/auth";
 import { 
   collection, 
+  getDocs,
   query, 
   where, 
   orderBy, 
@@ -33,7 +34,7 @@ import { MonthlyReport } from "./components/MonthlyReport";
 import { LoginForm } from "./components/LoginForm";
 import { DynamicCapsuleIcon } from "./components/DynamicCapsuleIcon";
 import { PioKieManager } from "./components/PioKieManager";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, animate } from "motion/react";
 import { 
   Plus, 
   Search, 
@@ -52,7 +53,9 @@ import {
   FolderSync,
   Upload,
   Sun,
-  Moon
+  Moon,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 
 function fixPrescriptionCategories(prescriptionsList: Prescription[]): { updatedList: Prescription[], changedCount: number } {
@@ -74,6 +77,23 @@ function fixPrescriptionCategories(prescriptionsList: Prescription[]): { updated
     return p;
   });
   return { updatedList, changedCount };
+}
+
+function AnimatedCounter({ value }: { value: number }) {
+  const [displayValue, setDisplayValue] = useState(value);
+
+  useEffect(() => {
+    const controls = animate(displayValue, value, {
+      duration: 0.8,
+      ease: "easeOut",
+      onUpdate: (latest) => {
+        setDisplayValue(Math.round(latest));
+      }
+    });
+    return () => controls.stop();
+  }, [value]);
+
+  return <>{displayValue}</>;
 }
 
 export default function App() {
@@ -103,11 +123,55 @@ export default function App() {
   // Core prescription state
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [dbLoading, setDbLoading] = useState<boolean>(false);
+  const [backupLoading, setBackupLoading] = useState<boolean>(false);
 
   // UI state managers
   const [activeTab, setActiveTab] = useState<"daftar" | "pio_kie" | "grafik" | "laporan" | "panduan">("daftar");
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [editPrescription, setEditPrescription] = useState<Prescription | null>(null);
+  const [isDateSummaryMinimized, setIsDateSummaryMinimized] = useState<boolean>(false);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Keyboard shortcut listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl && (
+          activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.tagName === "SELECT" ||
+          activeEl.hasAttribute("contenteditable")
+        )
+      ) {
+        return;
+      }
+
+      // 'n' or 'N' for opening/closing the "tambah resep" form
+      if (e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        setActiveTab("daftar");
+        setIsFormOpen(prev => !prev);
+      }
+
+      // 's' or 'S' for focusing search query input
+      if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        setActiveTab("daftar");
+        setTimeout(() => {
+          if (searchInputRef.current) {
+            searchInputRef.current.focus();
+          }
+        }, 50);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   // Search & Filter state
   const [searchDate, setSearchDate] = useState<string>("");
@@ -778,6 +842,206 @@ export default function App() {
     setSearchQuery("");
   };
 
+  const formatDateLabel = (dateStr: string) => {
+    if (!dateStr || dateStr === "Tanpa Tanggal") return "Tanpa Tanggal";
+    try {
+      const parts = dateStr.split("-");
+      if (parts.length === 3) {
+        const dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        return dateObj.toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "short",
+          year: "numeric"
+        });
+      }
+      return dateStr;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const prescriptionsCountByDate = useMemo(() => {
+    const counts: { [date: string]: number } = {};
+    
+    // First initialize all existing dates with 0 so the cards remain present
+    prescriptions.forEach((p) => {
+      const d = p.date || "Tanpa Tanggal";
+      counts[d] = 0;
+    });
+
+    // Filter list to count matching entries based on active filters
+    const activeList = prescriptions.filter((p) => {
+      // Date Range Filter
+      if (startDate && p.date < startDate) {
+        return false;
+      }
+      if (endDate && p.date > endDate) {
+        return false;
+      }
+
+      // Query (Search based on patient name, prescription no, doctor, medicines, or notes)
+      if (searchQuery.trim()) {
+        const queryLower = searchQuery.toLowerCase().trim();
+        const docMatch = p.doctor?.toLowerCase().includes(queryLower);
+        const notesMatch = p.notes?.toLowerCase().includes(queryLower);
+        const patientMatch = p.patientName?.toLowerCase().includes(queryLower);
+        const prescriptionNoMatch = p.prescriptionNo?.toLowerCase().includes(queryLower);
+        const medsMatch = p.medicines.some(
+          (m) =>
+            m.nama.toLowerCase().includes(queryLower) ||
+            m.kategori.toLowerCase().includes(queryLower)
+        );
+
+        if (!docMatch && !medsMatch && !notesMatch && !patientMatch && !prescriptionNoMatch) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    // Set counts for the matching items
+    activeList.forEach((p) => {
+      const d = p.date || "Tanpa Tanggal";
+      counts[d] = (counts[d] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [prescriptions, startDate, endDate, searchQuery]);
+
+  const filteredMedicinesStats = useMemo(() => {
+    const statsMap: { [medName: string]: { nama: string; kategori: string; totalJumlah: number } } = {};
+    
+    filteredPrescriptions.forEach((p) => {
+      p.medicines.forEach((m) => {
+        const key = m.nama.trim().toUpperCase();
+        if (!statsMap[key]) {
+          statsMap[key] = {
+            nama: m.nama.trim(),
+            kategori: m.kategori,
+            totalJumlah: 0
+          };
+        }
+        statsMap[key].totalJumlah += Number(m.jumlah || 0);
+      });
+    });
+    
+    return Object.values(statsMap).sort((a, b) => b.totalJumlah - a.totalJumlah);
+  }, [filteredPrescriptions]);
+
+  const handleDownloadBackup = async () => {
+    setBackupLoading(true);
+    let loadedPrescriptions: any[] = [];
+    let loadedPioKie: any[] = [];
+
+    const isGuest = !user || user.uid === "guest_user";
+
+    if (isFirebaseConfigured && db && !isGuest) {
+      try {
+        const prescriptionsPath = "prescriptions";
+        const prescriptionQuery = query(
+          collection(db, prescriptionsPath),
+          where("userId", "==", user.uid)
+        );
+        const prescriptionSnap = await getDocs(prescriptionQuery);
+        prescriptionSnap.forEach((docSnap) => {
+          loadedPrescriptions.push({ id: docSnap.id, ...docSnap.data() });
+        });
+      } catch (error) {
+        setBackupLoading(false);
+        setCustomAlert({
+          type: "error",
+          title: "Gagal Mengunduh Resep",
+          message: error instanceof Error ? error.message : "Terjadi kesalahan saat mengunduh resep dari Cloud."
+        });
+        return;
+      }
+
+      try {
+        const pioKiePath = "pio_kie";
+        const pioKieQuery = query(
+          collection(db, pioKiePath),
+          where("userId", "==", user.uid)
+        );
+        const pioKieSnap = await getDocs(pioKieQuery);
+        pioKieSnap.forEach((docSnap) => {
+          loadedPioKie.push({ id: docSnap.id, ...docSnap.data() });
+        });
+      } catch (error) {
+        setBackupLoading(false);
+        setCustomAlert({
+          type: "error",
+          title: "Gagal Mengunduh Data PIO/KIE",
+          message: error instanceof Error ? error.message : "Terjadi kesalahan saat mengunduh data PIO/KIE dari Cloud."
+        });
+        return;
+      }
+    } else {
+      // Offline / guest mode local persistence fallback
+      const cacheKey = user ? `rekap_resep_cloud_${user.uid}` : "rekap_resep_cloud_guest_user";
+      const localPrescriptions = localStorage.getItem(cacheKey);
+      if (localPrescriptions) {
+        try {
+          loadedPrescriptions = JSON.parse(localPrescriptions);
+        } catch {}
+      }
+      const localPioKie = localStorage.getItem("rekap_pio_kie");
+      if (localPioKie) {
+        try {
+          loadedPioKie = JSON.parse(localPioKie);
+        } catch {}
+      }
+    }
+
+    // Build the backup payload
+    const backupData = {
+      appName: "Apotek Rekap Resep",
+      backupVersion: "1.0",
+      timestamp: new Date().toISOString(),
+      userEmail: user?.email || "guest",
+      userId: user?.uid || "guest_user",
+      data: {
+        prescriptions: loadedPrescriptions,
+        pioKieLogs: loadedPioKie
+      }
+    };
+
+    try {
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      
+      const formattedDate = new Date().toLocaleDateString("id-ID", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).replace(/\//g, "-");
+
+      a.href = url;
+      a.download = `backup_apotek_rekap_${formattedDate}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setCustomAlert({
+        type: "success",
+        title: "Cadangan Berhasil Diunduh",
+        message: `Berhasil mengekspor ${loadedPrescriptions.length} resep dan ${loadedPioKie.length} log PIO/KIE ke file JSON!`
+      });
+    } catch (err) {
+      setCustomAlert({
+        type: "error",
+        title: "Gagal Membuat File",
+        message: err instanceof Error ? err.message : "Kesalahan tidak dikenal saat mengekspor data."
+      });
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#f6f9f7] flex flex-col items-center justify-center font-sans text-brand-dark">
@@ -926,6 +1190,17 @@ export default function App() {
             >
               {isDarkMode ? <Sun className="w-4.5 h-4.5 text-amber-500 animate-[spin_10s_linear_infinite]" /> : <Moon className="w-4.5 h-4.5" />}
             </button>
+
+            <button
+              id="btn-database-backup"
+              onClick={handleDownloadBackup}
+              disabled={backupLoading}
+              title="Unduh Cadangan Seluruh Basis Data (JSON)"
+              className="p-2.5 rounded-2xl bg-brand-light/35 dark:bg-brand-medium/20 text-brand-dark dark:text-brand-light hover:bg-brand-medium hover:text-white dark:hover:bg-brand-medium transition-all duration-200 cursor-pointer shadow-xs flex items-center justify-center border border-brand-light dark:border-brand-medium/30 shrink-0 disabled:opacity-50"
+              aria-label="Download Backup"
+            >
+              <Download className={`w-4.5 h-4.5 ${backupLoading ? "animate-bounce" : ""}`} />
+            </button>
           </div>
         </div>
       </header>
@@ -1018,9 +1293,11 @@ export default function App() {
                         id="btn-add-prescription"
                         onClick={handleTriggerCreate}
                         className="flex items-center gap-1.5 bg-[#8fc8be] hover:bg-[#7db9af] text-slate-850 text-xs font-bold py-1.5 px-4 rounded-lg transition border border-[#7db9af]/35 shadow-sm cursor-pointer"
+                        title="Formulir Resep Baru (Shortcut: N)"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        Tambah Resep
+                        <span>Tambah Resep</span>
+                        <kbd className="hidden sm:inline bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded text-[8px] font-mono leading-none">N</kbd>
                       </button>
                     </div>
                   </div>
@@ -1084,12 +1361,14 @@ export default function App() {
 
                     {/* Text keywords */}
                     <div>
-                      <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1.5">
-                        Cari Obat / Dokter / Pasien / No. Resep
+                      <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1.5 flex items-center justify-between">
+                        <span>Cari Obat / Dokter / Pasien / No. Resep</span>
+                        <span className="hidden sm:inline-flex items-center gap-1 text-[9px] font-mono font-medium lowercase text-slate-400 bg-slate-100 dark:bg-[#071c21] dark:border-[#102d33] px-1.5 py-0.5 rounded border border-slate-200">tekan <kbd className="font-extrabold uppercase bg-slate-200 dark:bg-slate-700 px-1 rounded text-[8px]">S</kbd> untuk cari cepat</span>
                       </label>
                       <div className="relative">
                         <input
                           id="search-filter-query"
+                          ref={searchInputRef}
                           type="text"
                           placeholder="Cari nama pasien, nomor resep, dokter, obat..."
                           value={searchQuery}
@@ -1117,6 +1396,149 @@ export default function App() {
                     </div>
                   )}
                 </div>
+
+                {/* Dynamic Medicine Summary based on search / date range */}
+                {filteredMedicinesStats.length > 0 && (searchQuery.trim() || searchDate || startDate || endDate) && (
+                  <div className="bg-gradient-to-br from-brand-medium/5 to-brand-medium/10 border border-brand-medium/20 rounded-2xl p-5 space-y-4 dark:from-[#0d2a30]/30 dark:to-[#081d22]/30 shadow-[0_4px_24px_-4px_rgba(130,165,145,0.04)]">
+                    <div className="flex items-center justify-between border-b border-brand-medium/15 pb-2">
+                      <h4 className="text-sm font-bold text-slate-800 dark:text-[#a0eed0] uppercase tracking-wider flex items-center gap-1.5">
+                        <Activity className="w-4 h-4 text-brand-medium" />
+                        Total Akumulasi Transaksi Obat Hasil Pencarian
+                      </h4>
+                      <span className="text-[10px] bg-brand-medium/20 text-[#07575b] px-2.5 py-1 rounded-full font-bold uppercase dark:bg-[#10b981]/25 dark:text-[#a0eed0] border border-brand-medium/20">
+                        {filteredMedicinesStats.length} Macam Obat ditemukan
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3.5 max-h-56 overflow-y-auto pr-2 custom-scrollbar">
+                      {filteredMedicinesStats.map((med, idx) => (
+                        <div 
+                          key={idx}
+                          id={`med-search-card-${idx}`}
+                          className="bg-white border border-[#e6ece7] rounded-xl p-3 flex flex-col justify-between hover:border-brand-medium/40 dark:hover:border-[#10b981]/50 hover:shadow-xs transition duration-200 relative dark:bg-[#071c21] dark:border-[#102d33]"
+                        >
+                          <div className="space-y-1.5">
+                            <span className="text-[9px] px-2 py-0.5 rounded-md font-extrabold uppercase tracking-widest block w-fit" 
+                              style={{
+                                backgroundColor: med.kategori === "Narkotika" ? "rgba(239, 68, 68, 0.15)" : 
+                                                 med.kategori === "Psikotropika" ? "rgba(245, 158, 11, 0.15)" :
+                                                 med.kategori === "Obat-obat Tertentu" ? "rgba(59, 130, 246, 0.15)" :
+                                                 med.kategori === "Prekursor" ? "rgba(16, 185, 129, 0.15)" : "rgba(107, 114, 128, 0.15)",
+                                color: med.kategori === "Narkotika" ? "#f87171" : 
+                                       med.kategori === "Psikotropika" ? "#fbbf24" :
+                                       med.kategori === "Obat-obat Tertentu" ? "#60a5fa" :
+                                       med.kategori === "Prekursor" ? "#34d399" : "#9ca3af"
+                              }}
+                            >
+                              {med.kategori}
+                            </span>
+                            <p className="text-xs font-black text-slate-800 line-clamp-2 select-all dark:text-slate-100 uppercase" title={med.nama}>
+                              {med.nama}
+                            </p>
+                          </div>
+                          <div className="mt-3 flex items-baseline justify-between border-t border-dashed border-slate-100 pt-1.5 dark:border-[#102d33]">
+                            <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Total Resep:</span>
+                            <span className="text-sm font-black text-[#07575b] dark:text-[#a0eed0]">{med.totalJumlah}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Prescriptions Date Summary Cards Panel */}
+                {prescriptionsCountByDate.length > 0 && (
+                  <div 
+                    id="date-summary-card" 
+                    className="bg-white border border-[#e6ece7] p-5 rounded-2xl shadow-[0_4px_24px_-4px_rgba(130,165,145,0.06)] space-y-3 dark:bg-[#081d22] dark:border-[#0f3e46]/50"
+                  >
+                    <div className="flex items-center justify-between border-b border-[#eff3ef] pb-2 dark:border-[#0f3e46]/30">
+                      <div className="flex items-center gap-1.5 bg-transparent">
+                        <h3 className="text-xs font-black text-slate-800 dark:text-[#a0eed0] uppercase tracking-wider flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-brand-medium" />
+                          Ringkasan Resep per Tanggal
+                        </h3>
+                        <button
+                          onClick={() => setIsDateSummaryMinimized(!isDateSummaryMinimized)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-brand-medium hover:bg-slate-50 dark:hover:bg-[#071c21] transition duration-200 cursor-pointer shadow-xs border border-transparent hover:border-slate-200 dark:hover:border-[#0f3e46]/30"
+                          title={isDateSummaryMinimized ? "Buka Ringkasan" : "Sembunyikan Ringkasan"}
+                          aria-label="Toggle Minimize Ringkasan"
+                        >
+                          {isDateSummaryMinimized ? (
+                            <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+                          ) : (
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                      
+                      {!isDateSummaryMinimized && (
+                        <button
+                          onClick={() => {
+                            setSearchDate("");
+                            setStartDate("");
+                            setEndDate("");
+                          }}
+                          className="text-[10px] text-brand-medium hover:underline font-bold dark:text-[#a0eed0] bg-transparent border-none p-0 cursor-pointer"
+                          title="Tampilkan semua resep tanpa filter tanggal"
+                        >
+                          Total {prescriptionsCountByDate.length} tanggal tercatat
+                        </button>
+                      )}
+                    </div>
+                    
+                    <AnimatePresence initial={false}>
+                      {!isDateSummaryMinimized && (
+                        <motion.div
+                          key="date-summary-content"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="flex flex-wrap gap-2.5 max-h-36 overflow-y-auto pr-1 pt-1.5 scrollbar-thin scrollbar-thumb-slate-200">
+                            {prescriptionsCountByDate.map(({ date, count }) => {
+                              const isActive = searchDate === date;
+                              return (
+                                <button
+                                  key={date}
+                                  onClick={() => {
+                                    if (isActive) {
+                                      setSearchDate("");
+                                    } else {
+                                      setSearchDate(date);
+                                      setStartDate("");
+                                      setEndDate("");
+                                    }
+                                  }}
+                                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer flex items-center gap-2 border shadow-xs max-w-[200px] shrink-0 ${
+                                    isActive
+                                      ? "bg-brand-medium text-white border-brand-medium dark:bg-emerald-600 dark:border-emerald-500 shadow-md transform scale-[1.02]"
+                                      : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-150 hover:border-slate-300 dark:bg-[#071c21] dark:text-slate-200 dark:border-[#0f3e46]/45 dark:hover:bg-[#0a272e]"
+                                  }`}
+                                  title={isActive ? "Klik untuk menghapus filter tanggal" : `Klik untuk menyaring resep tanggal ${formatDateLabel(date)}`}
+                                >
+                                  <div className="flex flex-col items-start leading-tight">
+                                    <span className="font-mono text-[9px] opacity-75">{date}</span>
+                                    <span className="truncate max-w-[120px]">{formatDateLabel(date)}</span>
+                                  </div>
+                                  <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-black shrink-0 ${
+                                    isActive 
+                                      ? "bg-white/20 text-white" 
+                                      : "bg-brand-medium/10 text-brand-medium dark:bg-[#10b981]/20 dark:text-[#10b981]"
+                                  }`}>
+                                    <AnimatedCounter value={count} />
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
 
                 {/* Grid List View of Prescriptions cards */}
                 {filteredPrescriptions.length > 0 ? (

@@ -765,6 +765,49 @@ export default function App() {
     }
   };
 
+  const handleTogglePin = async (id: string) => {
+    const item = prescriptions.find(p => p.id === id);
+    if (!item) return;
+    const newPinned = !item.isPinned;
+    
+    if (user && db && isFirebaseConfigured && user.uid !== "guest_user" && user.uid !== "guest_simulated") {
+      try {
+        const docRef = doc(db, "prescriptions", id);
+        await updateDoc(docRef, {
+          isPinned: newPinned,
+          updatedAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.error("Gagal update pin:", error);
+      }
+    } else {
+      const updated = prescriptions.map((p) => p.id === id ? { ...p, isPinned: newPinned } : p);
+      setPrescriptions(updated);
+      localStorage.setItem("rekap_resep_lokal", JSON.stringify(updated));
+    }
+  };
+
+  const handleUpdatePinNotes = async (id: string, pinNotes: string) => {
+    const item = prescriptions.find(p => p.id === id);
+    if (!item) return;
+    
+    if (user && db && isFirebaseConfigured && user.uid !== "guest_user" && user.uid !== "guest_simulated") {
+      try {
+        const docRef = doc(db, "prescriptions", id);
+        await updateDoc(docRef, {
+          pinNotes,
+          updatedAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.error("Gagal update pin notes:", error);
+      }
+    } else {
+      const updated = prescriptions.map((p) => p.id === id ? { ...p, pinNotes } : p);
+      setPrescriptions(updated);
+      localStorage.setItem("rekap_resep_lokal", JSON.stringify(updated));
+    }
+  };
+
   const handleTriggerEdit = (prescription: Prescription) => {
     setEditPrescription(prescription);
     setIsFormOpen(true);
@@ -777,7 +820,7 @@ export default function App() {
 
   // 4. Date Search and text filtering pipeline
   const filteredPrescriptions = useMemo(() => {
-    return prescriptions.filter((p) => {
+    const list = prescriptions.filter((p) => {
       // Date Search Filter Check
       if (searchDate && p.date !== searchDate) {
         return false;
@@ -810,6 +853,16 @@ export default function App() {
       }
 
       return true;
+    });
+
+    // Pinned prescriptions go first, then sorted by date descending within their classes
+    return [...list].sort((a, b) => {
+      const valA = a.isPinned ? 1 : 0;
+      const valB = b.isPinned ? 1 : 0;
+      if (valA !== valB) {
+        return valB - valA;
+      }
+      return b.date.localeCompare(a.date);
     });
   }, [prescriptions, searchDate, startDate, endDate, searchQuery]);
 
@@ -1210,6 +1263,7 @@ export default function App() {
         {isFormOpen ? (
           <PrescriptionForm
             initialData={editPrescription}
+            prescriptions={prescriptions}
             onSave={handleSavePrescription}
             onCancel={() => {
               setIsFormOpen(false);
@@ -1238,6 +1292,71 @@ export default function App() {
                   transition={{ duration: 0.22, ease: "easeOut" }}
                   className="space-y-6"
                 >
+                  
+                  {/* Today's Stats Cards for Quick Insight */}
+                  {(() => {
+                    const todayStr = (() => {
+                      const d = new Date();
+                      const year = d.getFullYear();
+                      const month = String(d.getMonth() + 1).padStart(2, '0');
+                      const date = String(d.getDate()).padStart(2, '0');
+                      return `${year}-${month}-${date}`;
+                    })();
+
+                    const todayPrescriptions = prescriptions.filter(p => p.date === todayStr);
+                    const todayPrescriptionsCount = todayPrescriptions.length;
+                    const todayMedicinesQty = todayPrescriptions.reduce((acc, p) => {
+                      return acc + (p.medicines || []).reduce((medAcc, m) => medAcc + (m.jumlah || 0), 0);
+                    }, 0);
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Card 1: Prescriptions Today */}
+                        <div className="bg-white border-2 border-[#8fc8be]/30 hover:border-[#8fc8be] p-5 rounded-2xl flex items-center justify-between shadow-[0_4px_16px_-4px_rgba(143,200,190,0.15)] group hover:scale-[1.01] transition duration-200">
+                          <div className="space-y-1.5">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-[#2c5344] bg-[#8fc8be]/20 px-2 py-0.5 rounded-md">
+                              Resep Masuk Hari Ini
+                            </span>
+                            <h4 className="text-3xl font-black text-[#003b46] tracking-tight flex items-baseline gap-1.5 pt-1">
+                              {todayPrescriptionsCount}
+                              <span className="text-xs font-bold text-slate-450 uppercase">resep</span>
+                            </h4>
+                            <p className="text-[11px] text-slate-500 font-medium">
+                              {todayPrescriptionsCount > 0 
+                                ? `Tercatat ${todayPrescriptionsCount} resep medis baru terinput hari ini.`
+                                : "Belum ada resep baru terdaftar di hari ini."
+                              }
+                            </p>
+                          </div>
+                          <div className="w-12 h-12 rounded-xl bg-[#8fc8be]/10 flex items-center justify-center text-[#3b7a6b]">
+                            <FileText className="w-6 h-6 animate-pulse" />
+                          </div>
+                        </div>
+
+                        {/* Card 2: Total Medicines Today */}
+                        <div className="bg-white border-2 border-brand-pink/30 hover:border-brand-pink p-5 rounded-2xl flex items-center justify-between shadow-[0_4px_16px_-4px_rgba(236,146,181,0.15)] group hover:scale-[1.01] transition duration-200">
+                          <div className="space-y-1.5">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-brand-dark bg-brand-pink/20 px-2 py-0.5 rounded-md">
+                              Total Obat Terinput Hari Ini
+                            </span>
+                            <h4 className="text-3xl font-black text-brand-dark tracking-tight flex items-baseline gap-1.5 pt-1">
+                              {todayMedicinesQty}
+                              <span className="text-xs font-bold text-slate-450 uppercase">butir/pcs</span>
+                            </h4>
+                            <p className="text-[11px] text-slate-500 font-medium">
+                              {todayMedicinesQty > 0 
+                                ? `Telah menginput ${todayMedicinesQty} butir obat di semua resep.`
+                                : "0 butir obat terekam dalam database hari ini."
+                              }
+                            </p>
+                          </div>
+                          <div className="w-12 h-12 rounded-xl bg-brand-pink/10 flex items-center justify-center text-brand-medium">
+                            <Activity className="w-6 h-6" />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 
                 {/* Search & Filtration Widget Card */}
                 <div className="bg-white border border-[#e6ece7] p-5 rounded-2xl shadow-[0_4px_24px_-4px_rgba(130,165,145,0.08)] space-y-4">
@@ -1334,9 +1453,14 @@ export default function App() {
                         id="search-filter-start"
                         type="date"
                         value={startDate}
+                        max={endDate || undefined}
                         onChange={(e) => {
-                          setStartDate(e.target.value);
+                          const val = e.target.value;
+                          setStartDate(val);
                           setSearchDate(""); // Clear spec
+                          if (val && endDate && val > endDate) {
+                            setEndDate(val);
+                          }
                         }}
                         className="w-full bg-[#fbfcfa] rounded-xl border border-[#e2eae4] p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#8fc8be] focus:ring-1 focus:ring-[#8fc8be]"
                       />
@@ -1351,8 +1475,14 @@ export default function App() {
                         id="search-filter-end"
                         type="date"
                         value={endDate}
+                        min={startDate || undefined}
                         onChange={(e) => {
-                          setEndDate(e.target.value);
+                          const val = e.target.value;
+                          if (startDate && val && val < startDate) {
+                            setEndDate(startDate);
+                          } else {
+                            setEndDate(val);
+                          }
                           setSearchDate(""); // Clear spec
                         }}
                         className="w-full bg-[#fbfcfa] rounded-xl border border-[#e2eae4] p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#8fc8be] focus:ring-1 focus:ring-[#8fc8be]"
@@ -1575,6 +1705,8 @@ export default function App() {
                           prescription={p}
                           onEdit={handleTriggerEdit}
                           onDelete={handleDeletePrescription}
+                          onTogglePin={handleTogglePin}
+                          onUpdatePinNotes={handleUpdatePinNotes}
                         />
                       ))}
                     </div>

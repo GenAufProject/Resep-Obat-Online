@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Medicine, Prescription, MEDICINE_CATEGORIES, getCategoryByMedicineName } from "@/src/types";
 import { Plus, Trash2, Calendar, FileText, User, Tag, HelpCircle, Save, X, Home } from "lucide-react";
 
 interface PrescriptionFormProps {
   initialData?: Prescription | null;
+  prescriptions?: Prescription[];
   onSave: (prescription: Omit<Prescription, "id"> & { id?: string }) => void;
   onCancel: () => void;
 }
 
 export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
   initialData,
+  prescriptions = [],
   onSave,
   onCancel
 }) => {
@@ -23,6 +25,37 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
     { nama: "", kategori: MEDICINE_CATEGORIES[0], dosis: "", jumlah: 10 }
   ]);
   const [errors, setErrors] = useState<string>("");
+
+  const duplicatePrescription = useMemo(() => {
+    if (!prescriptionNo.trim()) return null;
+    return prescriptions.find(
+      (p) =>
+        p.prescriptionNo?.trim().toLowerCase() === prescriptionNo.trim().toLowerCase() &&
+        p.id !== initialData?.id
+    );
+  }, [prescriptionNo, prescriptions, initialData]);
+
+  const [focusedMedIndex, setFocusedMedIndex] = useState<number | null>(null);
+
+  const previousMedicineNames = useMemo(() => {
+    const names = new Set<string>();
+    prescriptions.forEach((p) => {
+      p.medicines.forEach((m) => {
+        if (m.nama && m.nama.trim()) {
+          names.add(m.nama.trim());
+        }
+      });
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [prescriptions]);
+
+  const getSuggestions = (query: string) => {
+    if (!query || !query.trim()) return [];
+    const queryClean = query.toLowerCase().trim();
+    return previousMedicineNames.filter(
+      (name) => name.toLowerCase().includes(queryClean) && name.toLowerCase() !== queryClean
+    ).slice(0, 7);
+  };
 
   // Populate data when editing
   useEffect(() => {
@@ -180,6 +213,22 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
               className="w-full bg-white text-[#003b46] placeholder-slate-400 rounded-xl border border-[#dfd1af] focus:border-[#07575b] focus:ring-1 focus:ring-[#07575b] p-3 text-sm focus:outline-none transition font-semibold"
               required
             />
+            {duplicatePrescription && (
+              <div 
+                id="warning-duplicate-prescription" 
+                className="mt-2.5 p-3 bg-amber-100 hover:bg-amber-120/80 border border-amber-300 text-amber-900 rounded-xl text-xs font-semibold leading-relaxed flex items-start gap-1.5 shadow-xs transition"
+              >
+                <span className="text-amber-650 text-xs shrink-0 select-none">⚠️</span>
+                <div className="leading-tight">
+                  <p className="font-extrabold text-[10px] uppercase tracking-wider text-amber-800">
+                    Sudah Terinput
+                  </p>
+                  <p className="mt-1 text-amber-950 text-[10px] leading-snug">
+                    No. resep ini terdaftar atas nama pasien <strong>{duplicatePrescription.patientName}</strong> pada {duplicatePrescription.date}.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
@@ -303,7 +352,7 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
+                  <div className="relative">
                     <label className="block text-[10px] uppercase font-extrabold tracking-wider text-[#003b46]/70 mb-1">
                       Nama Obat *
                     </label>
@@ -313,9 +362,38 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
                       placeholder="Contoh: Codein 10mg"
                       value={med.nama}
                       onChange={(e) => handleMedicineChange(idx, "nama", e.target.value)}
-                      className="w-full bg-white border border-[#dfd1af] rounded-lg p-2.5 text-xs text-[#003b46] focus:border-[#07575b] focus:outline-none font-semibold"
+                      onFocus={() => setFocusedMedIndex(idx)}
+                      onBlur={() => {
+                        // Small timeout to let clicks on suggestions process first before blur hides them
+                        setTimeout(() => {
+                          setFocusedMedIndex((current) => current === idx ? null : current);
+                        }, 250);
+                      }}
+                      className="w-full bg-white border border-[#dfd1af] rounded-lg p-2.5 text-xs text-[#003b46] focus:border-[#07575b] focus:outline-none font-semibold relative z-10"
                       required
+                      autoComplete="off"
                     />
+                    
+                    {/* Autocomplete Suggestions dropdown menu */}
+                    {focusedMedIndex === idx && getSuggestions(med.nama).length > 0 && (
+                      <div className="absolute left-0 right-0 z-50 mt-1 bg-white border border-[#dfd1af] rounded-xl shadow-lg max-h-48 overflow-y-auto overflow-x-hidden divide-y divide-[#dfd1af]/30 select-none">
+                        {getSuggestions(med.nama).map((suggestion, sIdx) => (
+                          <button
+                            key={sIdx}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault(); // Prevents input from blurring before item selection is made
+                              handleMedicineChange(idx, "nama", suggestion);
+                              setFocusedMedIndex(null);
+                            }}
+                            className="w-full px-3 py-2 hover:bg-[#07575b]/5 text-left text-[11px] font-bold text-[#003b46] transition duration-150 cursor-pointer flex items-center justify-between"
+                          >
+                            <span>{suggestion}</span>
+                            <span className="text-[8px] font-extrabold text-[#07575b] opacity-80 uppercase tracking-widest bg-[#07575b]/10 px-1.5 py-0.5 rounded">Riwayat</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div>

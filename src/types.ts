@@ -15,6 +15,8 @@ export interface Prescription {
   patientName: string; // Nama Pasien
   patientAddress?: string; // Alamat Pasien (opsional)
   medicines: Medicine[];
+  isPinned?: boolean;
+  pinNotes?: string;
   createdAt?: string | Date | any;
   updatedAt?: string | Date | any;
 }

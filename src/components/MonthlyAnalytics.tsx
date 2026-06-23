@@ -26,7 +26,8 @@ import {
   Check,
   Search,
   X,
-  Plus
+  Plus,
+  User
 } from "lucide-react";
 
 interface MonthlyAnalyticsProps {
@@ -121,6 +122,74 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
   // Target states for Trend range
   const [trendStartDate, setTrendStartDate] = useState<string>("");
   const [trendEndDate, setTrendEndDate] = useState<string>("");
+
+  // Doctor workload/analytics states
+  const [doctorStartDate, setDoctorStartDate] = useState<string>("");
+  const [doctorEndDate, setDoctorEndDate] = useState<string>("");
+  const [doctorSearchQuery, setDoctorSearchQuery] = useState<string>("");
+  const [selectedDoctorForMeds, setSelectedDoctorForMeds] = useState<string | null>(null);
+
+  const doctorAnalyticsData = useMemo(() => {
+    const filtered = prescriptions.filter((p) => {
+      if (!p.date) return false;
+      if (doctorStartDate && p.date < doctorStartDate) return false;
+      if (doctorEndDate && p.date > doctorEndDate) return false;
+      return true;
+    });
+
+    const docMap: { [name: string]: { doctorName: string; prescriptionCount: number; totalMedicines: number; medicinesList: { name: string; qty: number }[] } } = {};
+
+    filtered.forEach((p) => {
+      const docName = (p.doctor && p.doctor.trim()) ? p.doctor.trim() : "Dokter Tidak Tercatat";
+      if (!docMap[docName]) {
+        docMap[docName] = {
+          doctorName: docName,
+          prescriptionCount: 0,
+          totalMedicines: 0,
+          medicinesList: []
+        };
+      }
+
+      docMap[docName].prescriptionCount += 1;
+
+      const medQtyMap: { [med: string]: number } = {};
+      p.medicines.forEach((m) => {
+        const qty = m.jumlah || 0;
+        docMap[docName].totalMedicines += qty;
+
+        const medName = m.nama?.trim() || "Obat Tanpa Nama";
+        medQtyMap[medName] = (medQtyMap[medName] || 0) + qty;
+      });
+
+      Object.entries(medQtyMap).forEach(([mName, qty]) => {
+        const existing = docMap[docName].medicinesList.find(item => item.name === mName);
+        if (existing) {
+          existing.qty += qty;
+        } else {
+          docMap[docName].medicinesList.push({ name: mName, qty });
+        }
+      });
+    });
+
+    // Make sure each doctor's internal medicine list is also sorted by quantity descending
+    Object.values(docMap).forEach((doc) => {
+      doc.medicinesList.sort((a, b) => b.qty - a.qty);
+    });
+
+    let result = Object.values(docMap).sort((a, b) => b.prescriptionCount - a.prescriptionCount);
+
+    if (doctorSearchQuery.trim()) {
+      const q = doctorSearchQuery.toLowerCase().trim();
+      result = result.filter(item => item.doctorName.toLowerCase().includes(q));
+    }
+
+    return result;
+  }, [prescriptions, doctorStartDate, doctorEndDate, doctorSearchQuery]);
+
+  const activeDoctorName = selectedDoctorForMeds || (doctorAnalyticsData[0]?.doctorName || null);
+  const activeDoctorData = useMemo(() => {
+    return doctorAnalyticsData.find((d) => d.doctorName === activeDoctorName) || null;
+  }, [doctorAnalyticsData, activeDoctorName]);
 
   // Determine active start and end strings based on loaded prescriptions if not user-defined
   const activeTrendRange = useMemo(() => {
@@ -986,6 +1055,260 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 4. Analisis Jumlah Obat & Resep Berdasarkan Nama Dokter pada Rentang Waktu Tertentu */}
+      {prescriptions.length > 0 && (
+        <div id="doctor-workload-card" className="bg-white border-2 border-brand-light p-6 rounded-2xl space-y-5 shadow-[0_4px_24px_-4px_rgba(0,59,70,0.05)]">
+          <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between border-b border-brand-light/30 pb-4 gap-4">
+            <div className="space-y-0.5">
+              <h3 className="text-sm font-extrabold text-[#003b46] uppercase tracking-wider flex items-center gap-2">
+                <User className="w-4 h-4 text-[#07575b]" />
+                Jumlah Obat & Resep Berdasarkan Dokter
+              </h3>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Lihat kuantitas obat dan jumlah lembaran resep medis yang diinput per dokter dalam rentang waktu tertentu.
+              </p>
+            </div>
+
+            {/* Date range filters specific to Doctor Analytics */}
+            <div className="flex items-center gap-2.5 flex-wrap w-full xl:w-auto">
+              <div className="flex flex-col gap-0.5 min-w-[120px]">
+                <span className="text-[9px] uppercase font-bold text-[#07575b]/85">Dari Tanggal</span>
+                <input
+                  type="date"
+                  value={doctorStartDate}
+                  max={doctorEndDate || undefined}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDoctorStartDate(val);
+                    if (val && doctorEndDate && val > doctorEndDate) {
+                      setDoctorEndDate(val);
+                    }
+                  }}
+                  className="bg-[#07575b]/5 text-[#003b46] border border-brand-light rounded-lg px-2.5 py-1 text-xs font-bold focus:outline-none focus:border-[#07575b] transition cursor-pointer"
+                />
+              </div>
+              <span className="text-xs text-slate-400 font-bold self-end mb-1.5">—</span>
+              <div className="flex flex-col gap-0.5 min-w-[120px]">
+                <span className="text-[9px] uppercase font-bold text-[#07575b]/85">Hingga Tanggal</span>
+                <input
+                  type="date"
+                  value={doctorEndDate}
+                  min={doctorStartDate || undefined}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (doctorStartDate && val && val < doctorStartDate) {
+                      setDoctorEndDate(doctorStartDate);
+                    } else {
+                      setDoctorEndDate(val);
+                    }
+                  }}
+                  className="bg-[#07575b]/5 text-[#003b46] border border-brand-light rounded-lg px-2.5 py-1 text-xs font-bold focus:outline-none focus:border-[#07575b] transition cursor-pointer"
+                />
+              </div>
+
+              {/* Saring Dokter name input */}
+              <div className="flex flex-col gap-0.5 min-w-[150px]">
+                <span className="text-[9px] uppercase font-bold text-[#07575b]/85">Cari / Saring Dokter</span>
+                <div className="relative">
+                  <Search className="w-3 h-3 text-[#07575b]/60 absolute left-2 top-1/2 transform -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Nama dokter..."
+                    value={doctorSearchQuery}
+                    onChange={(e) => setDoctorSearchQuery(e.target.value)}
+                    className="bg-[#07575b]/5 text-[#003b46] placeholder-slate-450 border border-brand-light rounded-lg pl-7 pr-7 py-1.5 text-xs font-bold focus:outline-none focus:border-[#07575b] transition w-full"
+                  />
+                  {doctorSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setDoctorSearchQuery("")}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[#003b46]/60 hover:text-red-600 bg-transparent p-0 border-none cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {(doctorStartDate || doctorEndDate || doctorSearchQuery) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDoctorStartDate("");
+                    setDoctorEndDate("");
+                    setDoctorSearchQuery("");
+                    setSelectedDoctorForMeds(null);
+                  }}
+                  className="text-[10px] text-red-650 hover:underline font-bold self-end mb-2 flex items-center gap-0.5 transition cursor-pointer"
+                >
+                  <X className="w-3 h-3" /> Reset Filter
+                </button>
+              )}
+            </div>
+          </div>
+
+          {doctorAnalyticsData.length === 0 ? (
+            <div className="text-center py-12 bg-slate-50/50 rounded-xl border border-dashed border-[#dfd1af]/50 p-6">
+              <User className="w-8 h-8 text-[#07575b]/30 mx-auto mb-2" />
+              <p className="text-xs font-bold text-slate-500">
+                Tidak ada data dokter ditemukan untuk rentang tanggal / kriteria pencarian ini.
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Cobalah mengubah filter rentang atau hapus kata sandi dokter.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Doctor Chart Panel */}
+              <div className="lg:col-span-7 bg-[#fcfbfa]/40 p-4 rounded-xl border border-brand-light/35 flex flex-col justify-between">
+                <div>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2 border-b border-[#07575b]/10 pb-2">
+                    <h4 className="text-[11px] uppercase font-black tracking-wider text-[#003b46]/75">
+                      Distribusi Jumlah Obat per Jenis Obat - {activeDoctorName}
+                    </h4>
+                    <span className="text-[9px] text-[#07575b] font-black uppercase bg-[#07575b]/5 border border-[#07575b]/10 px-2 py-0.5 rounded-md shrink-0">
+                      {activeDoctorData?.prescriptionCount || 0} Resep • {activeDoctorData?.totalMedicines || 0} Butir Obat
+                    </span>
+                  </div>
+                  
+                  <div className="h-72 w-full">
+                    {activeDoctorData && activeDoctorData.medicinesList.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={activeDoctorData.medicinesList.slice(0, 15).map(m => ({
+                            name: m.name,
+                            "Jumlah Obat (pcs)": m.qty
+                          }))}
+                          margin={{ top: 10, right: 10, left: -25, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#fdf0d5" vertical={false} />
+                          <XAxis 
+                            dataKey="name" 
+                            stroke="#07575b" 
+                            fontSize={9} 
+                            tickLine={false}
+                            axisLine={false}
+                            dy={8}
+                            tickFormatter={(val) => val.length > 12 ? val.substring(0, 10) + ".." : val}
+                          />
+                          <YAxis 
+                            stroke="#07575b" 
+                            fontSize={10} 
+                            tickLine={false}
+                            axisLine={false}
+                            allowDecimals={false}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "#fdf0d5",
+                              borderColor: "#dfd1af",
+                              borderRadius: "12px",
+                              color: "#003b46",
+                              fontSize: "11px",
+                              fontWeight: "750",
+                              boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05)"
+                            }}
+                            itemStyle={{ fontSize: "10px", padding: "2px 0" }}
+                          />
+                          <Legend 
+                            verticalAlign="top" 
+                            height={32} 
+                            iconType="circle"
+                            iconSize={8}
+                            wrapperStyle={{ fontSize: "10px", fontWeight: "600" }}
+                          />
+                          <Bar 
+                            dataKey="Jumlah Obat (pcs)" 
+                            fill="#ec92b5" 
+                            radius={[4, 4, 0, 0]} 
+                            barSize={18}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 text-xs font-semibold">
+                        <User className="w-8 h-8 opacity-40 mb-2" />
+                        Dokter ini belum direkam meresepkan obat.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 text-[10px] text-slate-450 italic text-center border-t border-brand-light/30 pt-2">
+                  * Menampilkan hingga 15 jenis obat paling sering diresepkan oleh dokter aktif.
+                </div>
+              </div>
+
+              {/* Doctors Breakdown Cards Column */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-brand-light/35 pb-2">
+                  <h4 className="text-[11px] uppercase font-black tracking-wider text-[#003b46]/75">
+                    Daftar Kinerja Dokter ({doctorAnalyticsData.length})
+                  </h4>
+                  <span className="text-[10px] font-bold text-[#07575b] bg-[#07575b]/5 px-2 py-0.5 rounded border border-[#07575b]/10">Saring rentang aktif</span>
+                </div>
+
+                <div className="space-y-2.5 max-h-[19.5rem] overflow-y-auto pr-1">
+                  {doctorAnalyticsData.map((doc, idx) => {
+                    const isActive = doc.doctorName === activeDoctorName;
+                    
+                    return (
+                      <div 
+                        key={idx}
+                        onClick={() => setSelectedDoctorForMeds(doc.doctorName)}
+                        className={`p-3 rounded-xl border border-brand-light/50 bg-white hover:border-[#07575b]/40 cursor-pointer transition select-none ${
+                          isActive ? "ring-2 ring-[#07575b] shadow-sm bg-[#07575b]/5 border-transparent" : "hover:bg-[#fcfbfa]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-1">
+                          <div className="space-y-0.5">
+                            <span className="text-xs font-bold text-[#003b46] flex items-center gap-1">
+                              <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-[#07575b] animate-pulse' : 'bg-slate-350'}`}></span>
+                              {doc.doctorName}
+                            </span>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-semibold">
+                              <span className="text-[#07575b]">{doc.prescriptionCount} lembar resep</span>
+                              <span>•</span>
+                              <span className="text-pink-600">{doc.totalMedicines} butir obat</span>
+                            </div>
+                          </div>
+
+                          <div className="text-[9px] bg-[#07575b]/10 text-[#07575b] font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                            {doc.medicinesList.length} jenis obat
+                          </div>
+                        </div>
+
+                        {isActive && (
+                          <div className="mt-2.5 pt-2.5 border-t border-brand-light/40 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                            <div className="text-[9px] font-black uppercase text-[#07575b]/80 tracking-widest">Detail Distribusi Resep Obat:</div>
+                            {doc.medicinesList.length > 0 ? (
+                              <div className="grid grid-cols-1 gap-1 max-h-32 overflow-y-auto pr-1">
+                                {doc.medicinesList.map((med, mIdx) => (
+                                  <div key={mIdx} className="flex items-center justify-between text-[10px] bg-slate-50 border border-slate-100 p-1.5 rounded-lg">
+                                    <span className="font-bold text-slate-600 truncate max-w-[170px]">{med.name}</span>
+                                    <span className="font-extrabold text-[#07575b] bg-[#07575b]/10 px-1.5 py-0.5 rounded shrink-0">
+                                      {med.qty} pcs
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-slate-400 italic">Tidak ada list obat.</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+          )}
         </div>
       )}
     </div>

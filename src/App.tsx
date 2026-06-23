@@ -55,7 +55,8 @@ import {
   Sun,
   Moon,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  ArrowUpDown
 } from "lucide-react";
 
 function fixPrescriptionCategories(prescriptionsList: Prescription[]): { updatedList: Prescription[], changedCount: number } {
@@ -179,6 +180,14 @@ export default function App() {
   const [endDate, setEndDate] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>(""); // for searching doctor/medicine name
   const [pageSize, setPageSize] = useState<number | "Semua">(20);
+  const [sortBy, setSortBy] = useState<"terbaru" | "terlama" | "nama-a-z" | "nama-z-a">("terbaru");
+  const [isCompact, setIsCompact] = useState<boolean>(() => {
+    return localStorage.getItem("is_compact_prescription_mode") === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("is_compact_prescription_mode", String(isCompact));
+  }, [isCompact]);
 
   // Merge modal trigger for unsynced local data
   const [localPrescriptionsCount, setLocalPrescriptionsCount] = useState<number>(0);
@@ -855,16 +864,25 @@ export default function App() {
       return true;
     });
 
-    // Pinned prescriptions go first, then sorted by date descending within their classes
+    // Pinned prescriptions go first, then sorted within their groups based on selected sortBy choice
     return [...list].sort((a, b) => {
       const valA = a.isPinned ? 1 : 0;
       const valB = b.isPinned ? 1 : 0;
       if (valA !== valB) {
         return valB - valA;
       }
-      return b.date.localeCompare(a.date);
+      
+      if (sortBy === "terlama") {
+        return (a.date || "").localeCompare(b.date || "");
+      } else if (sortBy === "nama-a-z") {
+        return (a.patientName || "").localeCompare(b.patientName || "");
+      } else if (sortBy === "nama-z-a") {
+        return (b.patientName || "").localeCompare(a.patientName || "");
+      }
+      // "terbaru" is the default fallback
+      return (b.date || "").localeCompare(a.date || "");
     });
-  }, [prescriptions, searchDate, startDate, endDate, searchQuery]);
+  }, [prescriptions, searchDate, startDate, endDate, searchQuery, sortBy]);
 
   const displayedPrescriptions = useMemo(() => {
     if (pageSize === "Semua") {
@@ -893,6 +911,7 @@ export default function App() {
     setStartDate("");
     setEndDate("");
     setSearchQuery("");
+    setSortBy("terbaru");
   };
 
   const formatDateLabel = (dateStr: string) => {
@@ -1286,78 +1305,14 @@ export default function App() {
               {activeTab === "daftar" && (
                 <motion.div
                   key="daftar"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ duration: 0.22, ease: "easeOut" }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
                   className="space-y-6"
                 >
                   
-                  {/* Today's Stats Cards for Quick Insight */}
-                  {(() => {
-                    const todayStr = (() => {
-                      const d = new Date();
-                      const year = d.getFullYear();
-                      const month = String(d.getMonth() + 1).padStart(2, '0');
-                      const date = String(d.getDate()).padStart(2, '0');
-                      return `${year}-${month}-${date}`;
-                    })();
 
-                    const todayPrescriptions = prescriptions.filter(p => p.date === todayStr);
-                    const todayPrescriptionsCount = todayPrescriptions.length;
-                    const todayMedicinesQty = todayPrescriptions.reduce((acc, p) => {
-                      return acc + (p.medicines || []).reduce((medAcc, m) => medAcc + (m.jumlah || 0), 0);
-                    }, 0);
-
-                    return (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Card 1: Prescriptions Today */}
-                        <div className="bg-white border-2 border-[#8fc8be]/30 hover:border-[#8fc8be] p-5 rounded-2xl flex items-center justify-between shadow-[0_4px_16px_-4px_rgba(143,200,190,0.15)] group hover:scale-[1.01] transition duration-200">
-                          <div className="space-y-1.5">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-[#2c5344] bg-[#8fc8be]/20 px-2 py-0.5 rounded-md">
-                              Resep Masuk Hari Ini
-                            </span>
-                            <h4 className="text-3xl font-black text-[#003b46] tracking-tight flex items-baseline gap-1.5 pt-1">
-                              {todayPrescriptionsCount}
-                              <span className="text-xs font-bold text-slate-450 uppercase">resep</span>
-                            </h4>
-                            <p className="text-[11px] text-slate-500 font-medium">
-                              {todayPrescriptionsCount > 0 
-                                ? `Tercatat ${todayPrescriptionsCount} resep medis baru terinput hari ini.`
-                                : "Belum ada resep baru terdaftar di hari ini."
-                              }
-                            </p>
-                          </div>
-                          <div className="w-12 h-12 rounded-xl bg-[#8fc8be]/10 flex items-center justify-center text-[#3b7a6b]">
-                            <FileText className="w-6 h-6 animate-pulse" />
-                          </div>
-                        </div>
-
-                        {/* Card 2: Total Medicines Today */}
-                        <div className="bg-white border-2 border-brand-pink/30 hover:border-brand-pink p-5 rounded-2xl flex items-center justify-between shadow-[0_4px_16px_-4px_rgba(236,146,181,0.15)] group hover:scale-[1.01] transition duration-200">
-                          <div className="space-y-1.5">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-brand-dark bg-brand-pink/20 px-2 py-0.5 rounded-md">
-                              Total Obat Terinput Hari Ini
-                            </span>
-                            <h4 className="text-3xl font-black text-brand-dark tracking-tight flex items-baseline gap-1.5 pt-1">
-                              {todayMedicinesQty}
-                              <span className="text-xs font-bold text-slate-450 uppercase">butir/pcs</span>
-                            </h4>
-                            <p className="text-[11px] text-slate-500 font-medium">
-                              {todayMedicinesQty > 0 
-                                ? `Telah menginput ${todayMedicinesQty} butir obat di semua resep.`
-                                : "0 butir obat terekam dalam database hari ini."
-                              }
-                            </p>
-                          </div>
-                          <div className="w-12 h-12 rounded-xl bg-brand-pink/10 flex items-center justify-center text-brand-medium">
-                            <Activity className="w-6 h-6" />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                
                 {/* Search & Filtration Widget Card */}
                 <div className="bg-white border border-[#e6ece7] p-5 rounded-2xl shadow-[0_4px_24px_-4px_rgba(130,165,145,0.08)] space-y-4">
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-[#eff3ef] pb-3">
@@ -1422,7 +1377,7 @@ export default function App() {
                   </div>
 
                   {/* Input parameters */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-1">
                     {/* Specific Date */}
                     <div>
                       <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1.5">
@@ -1489,18 +1444,37 @@ export default function App() {
                       />
                     </div>
 
+                    {/* Sort dropdown */}
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1.5 flex items-center gap-1 justify-between">
+                        <span>Urutkan Daftar</span>
+                        <ArrowUpDown className="w-3 h-3 text-[#3b7a6b]" />
+                      </label>
+                      <select
+                        id="search-filter-sort"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as any)}
+                        className="w-full bg-[#fbfcfa] rounded-xl border border-[#e2eae4] p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#8fc8be] focus:ring-1 focus:ring-[#8fc8be] font-bold cursor-pointer transition"
+                      >
+                        <option value="terbaru">Terbaru (Paling Baru)</option>
+                        <option value="terlama">Terlama (Paling Lama)</option>
+                        <option value="nama-a-z">Nama Pasien A-Z</option>
+                        <option value="nama-z-a">Nama Pasien Z-A</option>
+                      </select>
+                    </div>
+
                     {/* Text keywords */}
                     <div>
                       <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1.5 flex items-center justify-between">
-                        <span>Cari Obat / Dokter / Pasien / No. Resep</span>
-                        <span className="hidden sm:inline-flex items-center gap-1 text-[9px] font-mono font-medium lowercase text-slate-400 bg-slate-100 dark:bg-[#071c21] dark:border-[#102d33] px-1.5 py-0.5 rounded border border-slate-200">tekan <kbd className="font-extrabold uppercase bg-slate-200 dark:bg-slate-700 px-1 rounded text-[8px]">S</kbd> untuk cari cepat</span>
+                        <span>Cari Obat / Dokter / Pasien</span>
+                        <span className="hidden sm:inline-flex items-center gap-1 text-[9px] font-mono font-medium lowercase text-slate-400 bg-slate-100 dark:bg-[#071c21] dark:border-[#102d33] px-1.5 py-0.5 rounded border border-slate-200">tekan <kbd className="font-extrabold uppercase bg-slate-200 dark:bg-slate-700 px-1 rounded text-[8px]">S</kbd></span>
                       </label>
                       <div className="relative">
                         <input
                           id="search-filter-query"
                           ref={searchInputRef}
                           type="text"
-                          placeholder="Cari nama pasien, nomor resep, dokter, obat..."
+                          placeholder="Cari nama, dokter, obat..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className="w-full bg-[#fbfcfa] rounded-xl border border-[#e2eae4] py-2.5 pl-8 pr-3 text-xs text-slate-800 focus:outline-none focus:border-[#8fc8be] focus:ring-1 focus:ring-[#8fc8be]"
@@ -1511,7 +1485,7 @@ export default function App() {
                   </div>
 
                   {/* Clean up action is shown only if filters active */}
-                  {(searchDate || startDate || endDate || searchQuery) && (
+                  {(searchDate || startDate || endDate || searchQuery || sortBy !== "terbaru") && (
                     <div className="flex items-center justify-between text-xs pt-1">
                       <span className="text-slate-500 font-medium">
                         Menemukan <span className="text-[#3b7a6b] font-bold">{filteredPrescriptions.length}</span> resep cocok
@@ -1519,9 +1493,9 @@ export default function App() {
                       <button
                         id="btn-clear-filters"
                         onClick={clearFilters}
-                        className="text-[#3b7a6b] hover:text-[#2c5344] font-bold underline cursor-pointer"
+                        className="text-[#3b7a6b] hover:text-[#2c5344] font-bold underline cursor-pointer hover:no-underline"
                       >
-                        Hapus Semua Filter
+                        Hapus Semua Filter & Urutan
                       </button>
                     </div>
                   )}
@@ -1678,27 +1652,41 @@ export default function App() {
                       <div className="font-bold text-[#003b46]">
                         Menampilkan <span className="text-brand-medium font-extrabold">{displayedPrescriptions.length}</span> dari total <span className="text-brand-medium font-extrabold">{filteredPrescriptions.length}</span> resep.
                       </div>
-                      <div className="flex items-center gap-2 font-bold shrink-0">
-                        <span className="text-slate-500">Batas Tampilan:</span>
-                        <select
-                          id="page-size-select"
-                          value={pageSize}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setPageSize(val === "Semua" ? "Semua" : Number(val));
-                          }}
-                          className="bg-white border-2 border-brand-light text-brand-dark px-2.5 py-1.5 rounded-xl focus:outline-none focus:border-brand-medium text-xs font-black cursor-pointer"
-                        >
-                          <option value={10}>10 Resep</option>
-                          <option value={20}>20 Resep</option>
-                          <option value={50}>50 Resep</option>
-                          <option value={100}>100 Resep</option>
-                          <option value="Semua">Semua Resep</option>
-                        </select>
+                      <div className="flex flex-wrap items-center gap-4 font-bold shrink-0">
+                        {/* Compact mode toggle */}
+                        <label className="inline-flex items-center gap-2 cursor-pointer select-none sm:border-r border-slate-300/80 sm:pr-4">
+                          <input
+                            type="checkbox"
+                            checked={isCompact}
+                            onChange={(e) => setIsCompact(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="relative w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-brand-medium"></div>
+                          <span className="text-[#003b46] text-xs font-extrabold uppercase tracking-wider">Mode Ringkas</span>
+                        </label>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500">Batas Tampilan:</span>
+                          <select
+                            id="page-size-select"
+                            value={pageSize}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPageSize(val === "Semua" ? "Semua" : Number(val));
+                            }}
+                            className="bg-white border-2 border-brand-light text-brand-dark px-2.5 py-1.5 rounded-xl focus:outline-none focus:border-brand-medium text-xs font-black cursor-pointer"
+                          >
+                            <option value={10}>10 Resep</option>
+                            <option value={20}>20 Resep</option>
+                            <option value={50}>50 Resep</option>
+                            <option value={100}>100 Resep</option>
+                            <option value="Semua">Semua Resep</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className={`grid grid-cols-1 ${isCompact ? "md:grid-cols-2 lg:grid-cols-3 gap-4" : "md:grid-cols-2 gap-6"}`}>
                       {displayedPrescriptions.map((p) => (
                         <PrescriptionCard
                           key={p.id}
@@ -1707,6 +1695,7 @@ export default function App() {
                           onDelete={handleDeletePrescription}
                           onTogglePin={handleTogglePin}
                           onUpdatePinNotes={handleUpdatePinNotes}
+                          isCompact={isCompact}
                         />
                       ))}
                     </div>
@@ -1752,10 +1741,10 @@ export default function App() {
             {activeTab === "pio_kie" && (
               <motion.div
                 key="pio_kie"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.22, ease: "easeOut" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
               >
                 <PioKieManager 
                   user={user} 
@@ -1769,10 +1758,10 @@ export default function App() {
             {activeTab === "grafik" && (
               <motion.div
                 key="grafik"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.22, ease: "easeOut" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
               >
                 <MonthlyAnalytics prescriptions={prescriptions} />
               </motion.div>
@@ -1781,10 +1770,10 @@ export default function App() {
             {activeTab === "laporan" && (
               <motion.div
                 key="laporan"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.22, ease: "easeOut" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
               >
                 <MonthlyReport prescriptions={prescriptions} />
               </motion.div>
@@ -1794,10 +1783,10 @@ export default function App() {
               <motion.div 
                 id="guidelines-card" 
                 key="panduan"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.22, ease: "easeOut" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
                 className="bg-white border border-[#e6ece7] p-6 sm:p-8 rounded-2xl max-w-3xl mx-auto space-y-6 shadow-[0_4px_24px_-4px_rgba(130,165,145,0.08)]"
               >
                 <div className="flex items-center gap-3 border-b border-[#eff3ef] pb-4">

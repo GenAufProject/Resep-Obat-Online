@@ -36,6 +36,7 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
   }, [prescriptionNo, prescriptions, initialData]);
 
   const [focusedMedIndex, setFocusedMedIndex] = useState<number | null>(null);
+  const [isDoctorFocused, setIsDoctorFocused] = useState<boolean>(false);
 
   const previousMedicineNames = useMemo(() => {
     const names = new Set<string>();
@@ -49,10 +50,32 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [prescriptions]);
 
+  const previousDoctorNames = useMemo(() => {
+    const names = new Set<string>();
+    prescriptions.forEach((p) => {
+      if (p.doctor && p.doctor.trim()) {
+        names.add(p.doctor.trim());
+      }
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [prescriptions]);
+
   const getSuggestions = (query: string) => {
-    if (!query || !query.trim()) return [];
+    if (!query || !query.trim()) {
+      return previousMedicineNames.slice(0, 5);
+    }
     const queryClean = query.toLowerCase().trim();
     return previousMedicineNames.filter(
+      (name) => name.toLowerCase().includes(queryClean) && name.toLowerCase() !== queryClean
+    ).slice(0, 7);
+  };
+
+  const getDoctorSuggestions = (query: string) => {
+    if (!query || !query.trim()) {
+      return previousDoctorNames.slice(0, 5);
+    }
+    const queryClean = query.toLowerCase().trim();
+    return previousDoctorNames.filter(
       (name) => name.toLowerCase().includes(queryClean) && name.toLowerCase() !== queryClean
     ).slice(0, 7);
   };
@@ -264,7 +287,7 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+          <div className="relative">
             <label className="block text-xs font-bold text-[#003b46] uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-[#07575b]" />
               Nama Dokter (Opsional)
@@ -275,9 +298,38 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
               placeholder="Contoh: Dr. Herman"
               value={doctor}
               onChange={(e) => setDoctor(e.target.value)}
+              onFocus={() => setIsDoctorFocused(true)}
+              onBlur={() => {
+                // Small timeout to let clicks on suggestions process first before blur hides them
+                setTimeout(() => {
+                  setIsDoctorFocused(false);
+                }, 250);
+              }}
               className="w-full bg-white text-[#003b46] placeholder-slate-400 rounded-xl border border-[#dfd1af] focus:border-[#07575b] focus:ring-1 focus:ring-[#07575b] p-3 text-sm focus:outline-none transition font-semibold"
               maxLength={150}
+              autoComplete="off"
             />
+            
+            {/* Autocomplete Suggestions dropdown menu for Doctor */}
+            {isDoctorFocused && getDoctorSuggestions(doctor).length > 0 && (
+              <div className="absolute left-0 right-0 z-50 mt-1 bg-white border border-[#dfd1af] rounded-xl shadow-lg max-h-48 overflow-y-auto overflow-x-hidden divide-y divide-[#dfd1af]/30 select-none">
+                {getDoctorSuggestions(doctor).map((suggestion, sIdx) => (
+                  <button
+                    key={sIdx}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault(); // Prevents input from blurring before item selection is made
+                      setDoctor(suggestion);
+                      setIsDoctorFocused(false);
+                    }}
+                    className="w-full px-3 py-2.5 hover:bg-[#07575b]/5 text-left text-[11px] font-bold text-[#003b46] transition duration-150 cursor-pointer flex items-center justify-between"
+                  >
+                    <span>{suggestion}</span>
+                    <span className="text-[8px] font-extrabold text-[#07575b] opacity-80 uppercase tracking-widest bg-[#07575b]/10 px-1.5 py-0.5 rounded">Riwayat</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
@@ -369,10 +421,20 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
                           setFocusedMedIndex((current) => current === idx ? null : current);
                         }, 250);
                       }}
-                      className="w-full bg-white border border-[#dfd1af] rounded-lg p-2.5 text-xs text-[#003b46] focus:border-[#07575b] focus:outline-none font-semibold relative z-10"
+                      className={`w-full bg-white border rounded-lg p-2.5 text-xs focus:outline-none font-semibold relative z-10 transition ${
+                        !med.nama.trim()
+                          ? "border-rose-400 focus:border-rose-600 bg-rose-50/20 text-rose-950 placeholder-rose-350"
+                          : "border-[#dfd1af] focus:border-[#07575b] text-[#003b46]"
+                      }`}
                       required
                       autoComplete="off"
                     />
+                    
+                    {!med.nama.trim() && (
+                      <p className="text-[10px] text-rose-600 font-extrabold mt-1 flex items-center gap-1">
+                        <span>⚠️</span> Nama obat tidak boleh kosong
+                      </p>
+                    )}
                     
                     {/* Autocomplete Suggestions dropdown menu */}
                     {focusedMedIndex === idx && getSuggestions(med.nama).length > 0 && (
@@ -440,10 +502,22 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
                       min={0.01}
                       step="0.01"
                       value={med.jumlah || ""}
-                      onChange={(e) => handleMedicineChange(idx, "jumlah", parseFloat(e.target.value) || 0)}
-                      className="w-full bg-white border border-[#dfd1af] rounded-lg p-2.5 text-xs text-[#003b46] focus:border-[#07575b] focus:outline-none font-semibold"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        handleMedicineChange(idx, "jumlah", isNaN(val) ? 0 : val);
+                      }}
+                      className={`w-full bg-white border rounded-lg p-2.5 text-xs focus:outline-none font-semibold transition ${
+                        med.jumlah <= 0
+                          ? "border-rose-400 focus:border-rose-600 bg-rose-50/20 text-rose-950 placeholder-rose-350 font-bold"
+                          : "border-[#dfd1af] focus:border-[#07575b] text-[#003b46]"
+                      }`}
                       required
                     />
+                    {med.jumlah <= 0 && (
+                      <p className="text-[10px] text-rose-600 font-extrabold mt-1 flex items-center gap-1">
+                        <span>⚠️</span> Jumlah obat harus &gt; 0
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

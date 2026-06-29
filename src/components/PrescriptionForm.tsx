@@ -220,8 +220,9 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Prescription, Patient & Doctor Metadata */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Metadata Resep & Pasien */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 1. Nomor Resep */}
           <div>
             <label className="block text-xs font-bold text-[#003b46] uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-[#07575b]" />
@@ -254,39 +255,7 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
             )}
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-[#003b46] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-[#07575b]" />
-              Nama Pasien *
-            </label>
-            <input
-              id="input-patient-name"
-              type="text"
-              placeholder="Contoh: Budi Gunawan"
-              value={patientName}
-              onChange={(e) => setPatientName(e.target.value)}
-              className="w-full bg-white text-[#003b46] placeholder-slate-400 rounded-xl border border-[#dfd1af] focus:border-[#07575b] focus:ring-1 focus:ring-[#07575b] p-3 text-sm focus:outline-none transition font-semibold"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-[#003b46] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-[#07575b]" />
-              Tanggal Resep *
-            </label>
-            <input
-              id="input-date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-white text-[#003b46] rounded-xl border border-[#dfd1af] focus:border-[#07575b] focus:ring-1 focus:ring-[#07575b] p-3 text-xs focus:outline-none transition font-semibold"
-              required
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 2. Nama Dokter */}
           <div className="relative">
             <label className="block text-xs font-bold text-[#003b46] uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-[#07575b]" />
@@ -332,7 +301,41 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
             )}
           </div>
 
+          {/* 3. Tanggal Resep */}
           <div>
+            <label className="block text-xs font-bold text-[#003b46] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-[#07575b]" />
+              Tanggal Resep *
+            </label>
+            <input
+              id="input-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full bg-white text-[#003b46] rounded-xl border border-[#dfd1af] focus:border-[#07575b] focus:ring-1 focus:ring-[#07575b] p-3 text-xs focus:outline-none transition font-semibold"
+              required
+            />
+          </div>
+
+          {/* 4. Nama Pasien */}
+          <div>
+            <label className="block text-xs font-bold text-[#003b46] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-[#07575b]" />
+              Nama Pasien *
+            </label>
+            <input
+              id="input-patient-name"
+              type="text"
+              placeholder="Contoh: Budi Gunawan"
+              value={patientName}
+              onChange={(e) => setPatientName(e.target.value)}
+              className="w-full bg-white text-[#003b46] placeholder-slate-400 rounded-xl border border-[#dfd1af] focus:border-[#07575b] focus:ring-1 focus:ring-[#07575b] p-3 text-sm focus:outline-none transition font-semibold"
+              required
+            />
+          </div>
+
+          {/* 5. Alamat Pasien */}
+          <div className="md:col-span-2">
             <label className="block text-xs font-bold text-[#003b46] uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Home className="w-3.5 h-3.5 text-[#07575b]" />
               Alamat Pasien (Opsional)
@@ -347,22 +350,23 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
               maxLength={300}
             />
           </div>
-        </div>
 
-        <div>
-          <label className="block text-xs font-bold text-[#003b46] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <HelpCircle className="w-3.5 h-3.5 text-[#07575b]" />
-            Catatan Resep Umum (Opsional)
-          </label>
-          <input
-            id="input-notes"
-            type="text"
-            placeholder="Contoh: Diminum sesudah makan, habiskan antibiotik"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="w-full bg-white text-[#003b46] placeholder-slate-400 rounded-xl border border-[#dfd1af] focus:border-[#07575b] focus:ring-1 focus:ring-[#07575b] p-3 text-sm focus:outline-none transition font-semibold"
-            maxLength={500}
-          />
+          {/* 6. Catatan Resep Umum */}
+          <div className="md:col-span-2">
+            <label className="block text-xs font-bold text-[#003b46] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <HelpCircle className="w-3.5 h-3.5 text-[#07575b]" />
+              Catatan Resep Umum (Opsional)
+            </label>
+            <input
+              id="input-notes"
+              type="text"
+              placeholder="Contoh: Diminum sesudah makan, habiskan antibiotik"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full bg-white text-[#003b46] placeholder-slate-400 rounded-xl border border-[#dfd1af] focus:border-[#07575b] focus:ring-1 focus:ring-[#07575b] p-3 text-sm focus:outline-none transition font-semibold"
+              maxLength={500}
+            />
+          </div>
         </div>
 
         {/* Medicines list section */}

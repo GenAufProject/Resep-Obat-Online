@@ -25,7 +25,7 @@ import {
   writeBatch
 } from "firebase/firestore";
 import { Prescription, Medicine, MEDICINE_CATEGORIES, getCategoryByMedicineName } from "./types";
-import { exportToPDF, exportToExcel } from "./utils/export";
+import { exportToPDF, exportToExcel, exportSearchResultsToPDF, exportSearchResultsToExcel } from "./utils/export";
 import { SyncBanner } from "./components/SyncBanner";
 import { PrescriptionForm } from "./components/PrescriptionForm";
 import { PrescriptionCard } from "./components/PrescriptionCard";
@@ -34,6 +34,7 @@ import { MonthlyReport } from "./components/MonthlyReport";
 import { LoginForm } from "./components/LoginForm";
 import { DynamicCapsuleIcon } from "./components/DynamicCapsuleIcon";
 import { PioKieManager } from "./components/PioKieManager";
+import { DoctorMedicineOverview } from "./components/DoctorMedicineOverview";
 import { motion, AnimatePresence, animate } from "motion/react";
 import { 
   Plus, 
@@ -56,7 +57,8 @@ import {
   Moon,
   ChevronDown,
   ChevronUp,
-  ArrowUpDown
+  ArrowUpDown,
+  Users
 } from "lucide-react";
 
 function fixPrescriptionCategories(prescriptionsList: Prescription[]): { updatedList: Prescription[], changedCount: number } {
@@ -127,10 +129,9 @@ export default function App() {
   const [backupLoading, setBackupLoading] = useState<boolean>(false);
 
   // UI state managers
-  const [activeTab, setActiveTab] = useState<"daftar" | "pio_kie" | "grafik" | "laporan" | "panduan">("daftar");
+  const [activeTab, setActiveTab] = useState<"daftar" | "pio_kie" | "grafik" | "laporan" | "panduan" | "dokter_obat">("daftar");
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [editPrescription, setEditPrescription] = useState<Prescription | null>(null);
-  const [isDateSummaryMinimized, setIsDateSummaryMinimized] = useState<boolean>(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -932,58 +933,15 @@ export default function App() {
     }
   };
 
-  const prescriptionsCountByDate = useMemo(() => {
-    const counts: { [date: string]: number } = {};
-    
-    // First initialize all existing dates with 0 so the cards remain present
-    prescriptions.forEach((p) => {
-      const d = p.date || "Tanpa Tanggal";
-      counts[d] = 0;
-    });
-
-    // Filter list to count matching entries based on active filters
-    const activeList = prescriptions.filter((p) => {
-      // Date Range Filter
-      if (startDate && p.date < startDate) {
-        return false;
-      }
-      if (endDate && p.date > endDate) {
-        return false;
-      }
-
-      // Query (Search based on patient name, prescription no, doctor, medicines, or notes)
-      if (searchQuery.trim()) {
-        const queryLower = searchQuery.toLowerCase().trim();
-        const docMatch = p.doctor?.toLowerCase().includes(queryLower);
-        const notesMatch = p.notes?.toLowerCase().includes(queryLower);
-        const patientMatch = p.patientName?.toLowerCase().includes(queryLower);
-        const prescriptionNoMatch = p.prescriptionNo?.toLowerCase().includes(queryLower);
-        const medsMatch = p.medicines.some(
-          (m) =>
-            m.nama.toLowerCase().includes(queryLower) ||
-            m.kategori.toLowerCase().includes(queryLower)
-        );
-
-        if (!docMatch && !medsMatch && !notesMatch && !patientMatch && !prescriptionNoMatch) {
-          return false;
-        }
-      }
-      return true;
-    });
-
-    // Set counts for the matching items
-    activeList.forEach((p) => {
-      const d = p.date || "Tanpa Tanggal";
-      counts[d] = (counts[d] || 0) + 1;
-    });
-
-    return Object.entries(counts)
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [prescriptions, startDate, endDate, searchQuery]);
-
   const filteredMedicinesStats = useMemo(() => {
-    const statsMap: { [medName: string]: { nama: string; kategori: string; totalJumlah: number } } = {};
+    interface MedStat {
+      nama: string;
+      kategori: string;
+      totalJumlah: number;
+      doctors: { [name: string]: number };
+      patients: { [name: string]: number };
+    }
+    const statsMap: { [medName: string]: MedStat } = {};
     
     filteredPrescriptions.forEach((p) => {
       p.medicines.forEach((m) => {
@@ -992,10 +950,19 @@ export default function App() {
           statsMap[key] = {
             nama: m.nama.trim(),
             kategori: m.kategori,
-            totalJumlah: 0
+            totalJumlah: 0,
+            doctors: {},
+            patients: {}
           };
         }
-        statsMap[key].totalJumlah += Number(m.jumlah || 0);
+        const qty = Number(m.jumlah || 0);
+        statsMap[key].totalJumlah += qty;
+        
+        const docName = p.doctor ? p.doctor.trim() : "Tanpa Nama Dokter";
+        const patName = p.patientName ? p.patientName.trim() : "Tanpa Nama Pasien";
+        
+        statsMap[key].doctors[docName] = (statsMap[key].doctors[docName] || 0) + qty;
+        statsMap[key].patients[patName] = (statsMap[key].patients[patName] || 0) + qty;
       });
     });
     
@@ -1238,6 +1205,18 @@ export default function App() {
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 Laporan Bulanan
+              </button>
+              <button
+                id="tab-dokter-obat"
+                onClick={() => setActiveTab("dokter_obat")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === "dokter_obat"
+                    ? "bg-brand-medium text-white shadow-md border border-brand-medium/50"
+                    : "text-brand-dark hover:bg-brand-light/40 hover:text-brand-medium"
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                Ikhtisar Dokter & Obat
               </button>
               <button
                 id="tab-info"
@@ -1504,143 +1483,105 @@ export default function App() {
                 {/* Dynamic Medicine Summary based on search / date range */}
                 {filteredMedicinesStats.length > 0 && (searchQuery.trim() || searchDate || startDate || endDate) && (
                   <div className="bg-gradient-to-br from-brand-medium/5 to-brand-medium/10 border border-brand-medium/20 rounded-2xl p-5 space-y-4 dark:from-[#0d2a30]/30 dark:to-[#081d22]/30 shadow-[0_4px_24px_-4px_rgba(130,165,145,0.04)]">
-                    <div className="flex items-center justify-between border-b border-brand-medium/15 pb-2">
-                      <h4 className="text-sm font-bold text-slate-800 dark:text-[#a0eed0] uppercase tracking-wider flex items-center gap-1.5">
-                        <Activity className="w-4 h-4 text-brand-medium" />
-                        Total Akumulasi Transaksi Obat Hasil Pencarian
-                      </h4>
-                      <span className="text-[10px] bg-brand-medium/20 text-[#07575b] px-2.5 py-1 rounded-full font-bold uppercase dark:bg-[#10b981]/25 dark:text-[#a0eed0] border border-brand-medium/20">
-                        {filteredMedicinesStats.length} Macam Obat ditemukan
-                      </span>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-brand-medium/15 pb-3 gap-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-[#a0eed0] uppercase tracking-wider flex items-center gap-1.5">
+                          <Activity className="w-4 h-4 text-brand-medium" />
+                          Total Akumulasi Transaksi Obat Hasil Pencarian
+                        </h4>
+                        <span className="text-[10px] bg-brand-medium/20 text-[#07575b] px-2.5 py-1 rounded-full font-bold uppercase dark:bg-[#10b981]/25 dark:text-[#a0eed0] border border-brand-medium/20">
+                          {filteredMedicinesStats.length} Macam Obat ditemukan
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          id="btn-export-search-excel"
+                          onClick={() => exportSearchResultsToExcel(filteredMedicinesStats, { query: searchQuery, date: searchDate, startDate, endDate })}
+                          className="flex items-center gap-1.5 bg-white hover:bg-[#edf5f2] dark:bg-[#071c21] dark:hover:bg-[#0f3e46]/30 text-slate-700 dark:text-slate-200 text-[11px] py-1.5 px-3 rounded-lg border border-[#e2eae4] dark:border-[#102d33] hover:border-[#bfdccd] dark:hover:border-brand-medium transition cursor-pointer font-bold shadow-xs"
+                          title="Unduh hasil pencarian dalam format Excel"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5 text-[#3b7a6b] dark:text-[#34d399]" />
+                          <span>Excel</span>
+                        </button>
+                        <button
+                          id="btn-export-search-pdf"
+                          onClick={() => exportSearchResultsToPDF(filteredMedicinesStats, { query: searchQuery, date: searchDate, startDate, endDate })}
+                          className="flex items-center gap-1.5 bg-white hover:bg-[#edf5f2] dark:bg-[#071c21] dark:hover:bg-[#0f3e46]/30 text-slate-700 dark:text-slate-200 text-[11px] py-1.5 px-3 rounded-lg border border-[#e2eae4] dark:border-[#102d33] hover:border-[#bfdccd] dark:hover:border-brand-medium transition cursor-pointer font-bold shadow-xs"
+                          title="Unduh hasil pencarian dalam format PDF"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-rose-500" />
+                          <span>PDF</span>
+                        </button>
+                      </div>
                     </div>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3.5 max-h-56 overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 max-h-[30rem] overflow-y-auto pr-2 custom-scrollbar">
                       {filteredMedicinesStats.map((med, idx) => (
                         <div 
                           key={idx}
                           id={`med-search-card-${idx}`}
-                          className="bg-white border border-[#e6ece7] rounded-xl p-3 flex flex-col justify-between hover:border-brand-medium/40 dark:hover:border-[#10b981]/50 hover:shadow-xs transition duration-200 relative dark:bg-[#071c21] dark:border-[#102d33]"
+                          className="bg-white border border-[#e6ece7] rounded-xl p-3.5 flex flex-col justify-between hover:border-brand-medium/40 dark:hover:border-[#10b981]/50 hover:shadow-xs transition duration-200 relative dark:bg-[#071c21] dark:border-[#102d33] space-y-3"
                         >
                           <div className="space-y-1.5">
-                            <span className="text-[9px] px-2 py-0.5 rounded-md font-extrabold uppercase tracking-widest block w-fit" 
-                              style={{
-                                backgroundColor: med.kategori === "Narkotika" ? "rgba(239, 68, 68, 0.15)" : 
-                                                 med.kategori === "Psikotropika" ? "rgba(245, 158, 11, 0.15)" :
-                                                 med.kategori === "Obat-obat Tertentu" ? "rgba(59, 130, 246, 0.15)" :
-                                                 med.kategori === "Prekursor" ? "rgba(16, 185, 129, 0.15)" : "rgba(107, 114, 128, 0.15)",
-                                color: med.kategori === "Narkotika" ? "#f87171" : 
-                                       med.kategori === "Psikotropika" ? "#fbbf24" :
-                                       med.kategori === "Obat-obat Tertentu" ? "#60a5fa" :
-                                       med.kategori === "Prekursor" ? "#34d399" : "#9ca3af"
-                              }}
-                            >
-                              {med.kategori}
-                            </span>
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="text-[9px] px-2 py-0.5 rounded-md font-extrabold uppercase tracking-widest block w-fit" 
+                                style={{
+                                  backgroundColor: med.kategori === "Narkotika" ? "rgba(239, 68, 68, 0.15)" : 
+                                                   med.kategori === "Psikotropika" ? "rgba(245, 158, 11, 0.15)" :
+                                                   med.kategori === "Obat-obat Tertentu" ? "rgba(59, 130, 246, 0.15)" :
+                                                   med.kategori === "Prekursor" ? "rgba(16, 185, 129, 0.15)" : "rgba(107, 114, 128, 0.15)",
+                                  color: med.kategori === "Narkotika" ? "#f87171" : 
+                                         med.kategori === "Psikotropika" ? "#fbbf24" :
+                                         med.kategori === "Obat-obat Tertentu" ? "#60a5fa" :
+                                         med.kategori === "Prekursor" ? "#34d399" : "#9ca3af"
+                                }}
+                              >
+                                {med.kategori}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[9px] text-slate-400 font-bold uppercase">Total:</span>
+                                <span className="text-xs font-black text-[#07575b] dark:text-[#a0eed0] bg-[#07575b]/10 dark:bg-[#a0eed0]/10 px-1.5 py-0.5 rounded-md">{med.totalJumlah}</span>
+                              </div>
+                            </div>
                             <p className="text-xs font-black text-slate-800 line-clamp-2 select-all dark:text-slate-100 uppercase" title={med.nama}>
                               {med.nama}
                             </p>
                           </div>
-                          <div className="mt-3 flex items-baseline justify-between border-t border-dashed border-slate-100 pt-1.5 dark:border-[#102d33]">
-                            <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Total Resep:</span>
-                            <span className="text-sm font-black text-[#07575b] dark:text-[#a0eed0]">{med.totalJumlah}</span>
+
+                          {/* Breakdown Dokter */}
+                          <div className="border-t border-dashed border-slate-150 pt-2 dark:border-[#102d33] space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] text-slate-450 font-bold uppercase tracking-wider">Detail per Dokter:</span>
+                              <span className="text-[8px] text-slate-400 font-bold">{Object.keys(med.doctors).length} Dokter</span>
+                            </div>
+                            <div className="max-h-20 overflow-y-auto space-y-1 pr-1 custom-scrollbar text-[10px]">
+                              {Object.entries(med.doctors).map(([doc, qty]) => (
+                                <div key={doc} className="flex justify-between items-center bg-slate-50 dark:bg-[#081d22]/40 px-2 py-0.5 rounded border border-slate-100 dark:border-[#0f3e46]/20">
+                                  <span className="text-slate-600 dark:text-slate-300 truncate max-w-[130px] font-semibold">{doc}</span>
+                                  <span className="text-brand-medium dark:text-[#a0eed0] font-bold">{qty}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Breakdown Pasien */}
+                          <div className="border-t border-dashed border-slate-150 pt-2 dark:border-[#102d33] space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] text-slate-450 font-bold uppercase tracking-wider">Detail per Pasien:</span>
+                              <span className="text-[8px] text-slate-400 font-bold">{Object.keys(med.patients).length} Pasien</span>
+                            </div>
+                            <div className="max-h-20 overflow-y-auto space-y-1 pr-1 custom-scrollbar text-[10px]">
+                              {Object.entries(med.patients).map(([pat, qty]) => (
+                                <div key={pat} className="flex justify-between items-center bg-slate-50 dark:bg-[#081d22]/40 px-2 py-0.5 rounded border border-slate-100 dark:border-[#0f3e46]/20">
+                                  <span className="text-slate-600 dark:text-slate-300 truncate max-w-[130px] font-semibold">{pat}</span>
+                                  <span className="text-brand-medium dark:text-[#a0eed0] font-bold">{qty}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {/* Prescriptions Date Summary Cards Panel */}
-                {prescriptionsCountByDate.length > 0 && (
-                  <div 
-                    id="date-summary-card" 
-                    className="bg-white border border-[#e6ece7] p-5 rounded-2xl shadow-[0_4px_24px_-4px_rgba(130,165,145,0.06)] space-y-3 dark:bg-[#081d22] dark:border-[#0f3e46]/50"
-                  >
-                    <div className="flex items-center justify-between border-b border-[#eff3ef] pb-2 dark:border-[#0f3e46]/30">
-                      <div className="flex items-center gap-1.5 bg-transparent">
-                        <h3 className="text-xs font-black text-slate-800 dark:text-[#a0eed0] uppercase tracking-wider flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-brand-medium" />
-                          Ringkasan Resep per Tanggal
-                        </h3>
-                        <button
-                          onClick={() => setIsDateSummaryMinimized(!isDateSummaryMinimized)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-brand-medium hover:bg-slate-50 dark:hover:bg-[#071c21] transition duration-200 cursor-pointer shadow-xs border border-transparent hover:border-slate-200 dark:hover:border-[#0f3e46]/30"
-                          title={isDateSummaryMinimized ? "Buka Ringkasan" : "Sembunyikan Ringkasan"}
-                          aria-label="Toggle Minimize Ringkasan"
-                        >
-                          {isDateSummaryMinimized ? (
-                            <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
-                          ) : (
-                            <ChevronUp className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-                      
-                      {!isDateSummaryMinimized && (
-                        <button
-                          onClick={() => {
-                            setSearchDate("");
-                            setStartDate("");
-                            setEndDate("");
-                          }}
-                          className="text-[10px] text-brand-medium hover:underline font-bold dark:text-[#a0eed0] bg-transparent border-none p-0 cursor-pointer"
-                          title="Tampilkan semua resep tanpa filter tanggal"
-                        >
-                          Total {prescriptionsCountByDate.length} tanggal tercatat
-                        </button>
-                      )}
-                    </div>
-                    
-                    <AnimatePresence initial={false}>
-                      {!isDateSummaryMinimized && (
-                        <motion.div
-                          key="date-summary-content"
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.25, ease: "easeInOut" }}
-                          className="overflow-hidden"
-                        >
-                          <div className="flex flex-wrap gap-2.5 max-h-36 overflow-y-auto pr-1 pt-1.5 scrollbar-thin scrollbar-thumb-slate-200">
-                            {prescriptionsCountByDate.map(({ date, count }) => {
-                              const isActive = searchDate === date;
-                              return (
-                                <button
-                                  key={date}
-                                  onClick={() => {
-                                    if (isActive) {
-                                      setSearchDate("");
-                                    } else {
-                                      setSearchDate(date);
-                                      setStartDate("");
-                                      setEndDate("");
-                                    }
-                                  }}
-                                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer flex items-center gap-2 border shadow-xs max-w-[200px] shrink-0 ${
-                                    isActive
-                                      ? "bg-brand-medium text-white border-brand-medium dark:bg-emerald-600 dark:border-emerald-500 shadow-md transform scale-[1.02]"
-                                      : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-150 hover:border-slate-300 dark:bg-[#071c21] dark:text-slate-200 dark:border-[#0f3e46]/45 dark:hover:bg-[#0a272e]"
-                                  }`}
-                                  title={isActive ? "Klik untuk menghapus filter tanggal" : `Klik untuk menyaring resep tanggal ${formatDateLabel(date)}`}
-                                >
-                                  <div className="flex flex-col items-start leading-tight">
-                                    <span className="font-mono text-[9px] opacity-75">{date}</span>
-                                    <span className="truncate max-w-[120px]">{formatDateLabel(date)}</span>
-                                  </div>
-                                  <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-black shrink-0 ${
-                                    isActive 
-                                      ? "bg-white/20 text-white" 
-                                      : "bg-brand-medium/10 text-brand-medium dark:bg-[#10b981]/20 dark:text-[#10b981]"
-                                  }`}>
-                                    <AnimatedCounter value={count} />
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
                   </div>
                 )}
 
@@ -1776,6 +1717,19 @@ export default function App() {
                 transition={{ duration: 0.3, ease: "easeInOut" }}
               >
                 <MonthlyReport prescriptions={prescriptions} />
+              </motion.div>
+            )}
+
+            {activeTab === "dokter_obat" && (
+              <motion.div
+                id="dokter-obat-overview-card"
+                key="dokter_obat"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+              >
+                <DoctorMedicineOverview prescriptions={prescriptions} />
               </motion.div>
             )}
 

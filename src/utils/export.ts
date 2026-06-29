@@ -345,3 +345,242 @@ export function exportCategoryStockToExcel(
   document.body.removeChild(link);
 }
 
+export interface SearchResultMedicineStat {
+  nama: string;
+  kategori: string;
+  totalJumlah: number;
+  doctors: { [name: string]: number };
+  patients: { [name: string]: number };
+}
+
+export function exportSearchResultsToPDF(
+  stats: SearchResultMedicineStat[],
+  filtersInfo: { query: string; date: string; startDate: string; endDate: string }
+) {
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4"
+  });
+
+  const truncateString = (str: string, maxLength: number) => {
+    if (str.length > maxLength) {
+      return str.substring(0, maxLength - 3) + "...";
+    }
+    return str;
+  };
+
+  let y = 20;
+
+  // Header Title
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(7, 87, 91); // Brand Active Teal
+  doc.text("Laporan Akumulasi Transaksi Obat (Hasil Pencarian)", 14, y);
+  y += 8;
+
+  // Subtitle (Filters info)
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139); // Slate-500
+
+  const filterParts = [];
+  if (filtersInfo.query) filterParts.push(`Kata Kunci: "${filtersInfo.query}"`);
+  if (filtersInfo.date) filterParts.push(`Tanggal: ${filtersInfo.date}`);
+  if (filtersInfo.startDate && filtersInfo.endDate) filterParts.push(`Periode: ${filtersInfo.startDate} s/d ${filtersInfo.endDate}`);
+  else if (filtersInfo.startDate) filterParts.push(`Mulai: ${filtersInfo.startDate}`);
+  else if (filtersInfo.endDate) filterParts.push(`Sampai: ${filtersInfo.endDate}`);
+
+  const subtitleStr = filterParts.length > 0 ? filterParts.join(" | ") : "Semua Transaksi";
+  doc.text(subtitleStr, 14, y);
+  y += 5;
+
+  const currentDateStr = new Date().toLocaleDateString("id-ID", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+  doc.text(`Dicetak pada: ${currentDateStr} | Total: ${stats.length} Macam Obat`, 14, y);
+  y += 10;
+
+  stats.forEach((med, index) => {
+    const docEntries = Object.entries(med.doctors).sort((a, b) => b[1] - a[1]);
+    const patEntries = Object.entries(med.patients).sort((a, b) => b[1] - a[1]);
+    const maxRows = Math.max(docEntries.length, patEntries.length);
+
+    // Calculate height needed for this entire block
+    const headerHeight = 7;
+    const subheaderHeight = 5;
+    const rowHeight = 4.5;
+    const spacingAfterBlock = 6;
+    const blockHeight = headerHeight + 1.5 + subheaderHeight + 1 + (maxRows * rowHeight) + spacingAfterBlock;
+
+    // Page-break if we overflow 275mm height on A4
+    if (y + blockHeight > 275) {
+      doc.addPage();
+      y = 20;
+    }
+
+    // 1. Medicine Header Section (Solid background block)
+    doc.setFillColor(7, 87, 91); // Brand active teal
+    doc.rect(14, y, 182, headerHeight, "F");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    
+    // Left-aligned name
+    const titleText = `${index + 1}. ${med.nama.toUpperCase()}   [ ${med.kategori || "Lain-lain"} ]`;
+    doc.text(titleText, 17, y + 4.8);
+
+    // Right-aligned total quantity
+    doc.text(`TOTAL: ${med.totalJumlah} pcs`, 193, y + 4.8, { align: "right" });
+
+    y += headerHeight + 1.5;
+
+    // 2. Side-by-side Table Columns Sub-Headers
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(0, 59, 70); // Dark teal
+
+    // Left Column Header: Dokter
+    doc.text("NAMA DOKTER", 17, y + 3.5);
+    doc.text("QTY", 92, y + 3.5, { align: "right" });
+    doc.setDrawColor(7, 87, 91);
+    doc.setLineWidth(0.25);
+    doc.line(14, y + 4.5, 96, y + 4.5);
+
+    // Right Column Header: Pasien
+    doc.text("NAMA PASIEN", 109, y + 3.5);
+    doc.text("QTY", 193, y + 3.5, { align: "right" });
+    doc.line(106, y + 4.5, 196, y + 4.5);
+
+    y += subheaderHeight + 1;
+
+    // 3. Render side-by-side rows
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(51, 65, 85); // Slate-700
+
+    for (let i = 0; i < maxRows; i++) {
+      const docItem = docEntries[i];
+      const patItem = patEntries[i];
+
+      // Draw Doctor entry
+      if (docItem) {
+        const docName = docItem[0];
+        const docQty = docItem[1];
+        doc.text(truncateString(docName, 42), 17, y + 3.2);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${docQty} pcs`, 92, y + 3.2, { align: "right" });
+        doc.setFont("helvetica", "normal");
+      } else {
+        doc.setTextColor(148, 163, 184); // slate-400
+        doc.text("-", 17, y + 3.2);
+        doc.setTextColor(51, 65, 85);
+      }
+
+      // Draw Patient entry
+      if (patItem) {
+        const patName = patItem[0];
+        const patQty = patItem[1];
+        doc.text(truncateString(patName, 42), 109, y + 3.2);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${patQty} pcs`, 193, y + 3.2, { align: "right" });
+        doc.setFont("helvetica", "normal");
+      } else {
+        doc.setTextColor(148, 163, 184); // slate-400
+        doc.text("-", 109, y + 3.2);
+        doc.setTextColor(51, 65, 85);
+      }
+
+      // Draw subtle divider line between rows
+      doc.setDrawColor(241, 245, 249);
+      doc.setLineWidth(0.15);
+      doc.line(14, y + 4.2, 196, y + 4.2);
+
+      y += rowHeight;
+    }
+
+    // Add extra vertical padding after each medicine block
+    y += spacingAfterBlock - 2;
+  });
+
+  const stamp = new Date().toISOString().substring(0, 10);
+  doc.save(`Hasil_Pencarian_Obat_${stamp}.pdf`);
+}
+
+export function exportSearchResultsToExcel(
+  stats: SearchResultMedicineStat[],
+  filtersInfo: { query: string; date: string; startDate: string; endDate: string }
+) {
+  const headers = [
+    "No", 
+    "Nama Obat", 
+    "Kategori", 
+    "Total Jumlah (pcs)", 
+    "Nama Dokter", 
+    "Jumlah (Dokter)", 
+    "Nama Pasien", 
+    "Jumlah (Pasien)"
+  ];
+  
+  const rows: string[][] = [];
+
+  stats.forEach((med, index) => {
+    const docEntries = Object.entries(med.doctors).sort((a, b) => b[1] - a[1]);
+    const patEntries = Object.entries(med.patients).sort((a, b) => b[1] - a[1]);
+    const maxRows = Math.max(docEntries.length, patEntries.length);
+
+    for (let i = 0; i < maxRows; i++) {
+      const docItem = docEntries[i];
+      const patItem = patEntries[i];
+
+      rows.push([
+        // Only write core metadata on the first row of each medicine block
+        i === 0 ? String(index + 1) : "",
+        i === 0 ? med.nama : "",
+        i === 0 ? med.kategori : "",
+        i === 0 ? String(med.totalJumlah) : "",
+        
+        // Doctor details for this row
+        docItem ? docItem[0] : "",
+        docItem ? String(docItem[1]) : "",
+        
+        // Patient details for this row
+        patItem ? patItem[0] : "",
+        patItem ? String(patItem[1]) : ""
+      ]);
+    }
+    
+    // Add a blank separator row to neatly delimit different medicines
+    rows.push(["", "", "", "", "", "", "", ""]);
+  });
+
+  const escapeCSV = (str: string) => {
+    let escaped = str.replace(/"/g, '""');
+    if (escaped.includes(",") || escaped.includes("\n") || escaped.includes("\r") || escaped.includes('"')) {
+      escaped = `"${escaped}"`;
+    }
+    return escaped;
+  };
+
+  // Add the \uFEFF BOM character to preserve UTF-8 compatibility inside Excel
+  const csvContent = "\uFEFF" + [
+    headers.map(escapeCSV).join(","),
+    ...rows.map(r => r.map(escapeCSV).join(","))
+  ].join("\r\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = new Date().toISOString().substring(0, 10);
+  link.setAttribute("href", url);
+  link.setAttribute("download", `Hasil_Pencarian_Obat_${stamp}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+

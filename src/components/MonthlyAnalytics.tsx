@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { Prescription, MonthlyStats, CategorySummary } from "@/src/types";
 import { 
   BarChart, 
@@ -34,10 +35,30 @@ interface MonthlyAnalyticsProps {
   prescriptions: Prescription[];
 }
 
+const getPrescriptionCategory = (p: Prescription): string => {
+  const hasNarkotika = p.medicines.some(m => m.kategori?.toLowerCase() === "narkotika");
+  const hasPsikotropika = p.medicines.some(m => m.kategori?.toLowerCase() === "psikotropika");
+  const hasOot = p.medicines.some(m => m.kategori?.toLowerCase() === "obat-obat tertentu");
+
+  if (hasNarkotika) return "Narkotika";
+  if (hasPsikotropika) return "Psikotropika";
+  if (hasOot) return "Obat-obat Tertentu";
+  return "Resep Biasa";
+};
+
 export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescriptions }) => {
+  // Toggle between "obat" (number of medicines) or "resep" (number of prescriptions)
+  const [analyticsMetric, setAnalyticsMetric] = useState<"obat" | "resep">("obat");
+
   // 1. Group and sort prescriptions into monthly intervals automatically
   const monthlyStatsList = useMemo((): MonthlyStats[] => {
-    const monthsMap: { [key: string]: { prescriptionCount: number; medicines: { [cat: string]: { count: number; totalQty: number } } } } = {};
+    const monthsMap: { 
+      [key: string]: { 
+        prescriptionCount: number; 
+        medicines: { [cat: string]: { count: number; totalQty: number } };
+        prescriptions: Prescription[];
+      } 
+    } = {};
 
     prescriptions.forEach((item) => {
       // Extract year and month, e.g., "2026-06"
@@ -48,11 +69,13 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
       if (!monthsMap[monthKey]) {
         monthsMap[monthKey] = {
           prescriptionCount: 0,
-          medicines: {}
+          medicines: {},
+          prescriptions: []
         };
       }
 
       monthsMap[monthKey].prescriptionCount += 1;
+      monthsMap[monthKey].prescriptions.push(item);
 
       item.medicines.forEach((med) => {
         const cat = med.kategori || "Lain-lain";
@@ -75,16 +98,49 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
       const monthIndex = parseInt(monthStr, 10) - 1;
       const monthName = `${monthNames[monthIndex] || "Bulan"} ${year}`;
 
-      const totalQuantity = Object.values(monthsMap[mKey].medicines).reduce((sum, item) => sum + item.totalQty, 0);
+      let categories: CategorySummary[] = [];
+      let totalQuantity = 0;
 
-      const categories: CategorySummary[] = Object.entries(monthsMap[mKey].medicines).map(([cat, detail]) => {
-        return {
-          kategori: cat,
-          count: detail.count,
-          totalJumlah: detail.totalQty,
-          percentage: totalQuantity > 0 ? Math.round((detail.totalQty / totalQuantity) * 100) : 0
+      if (analyticsMetric === "resep") {
+        // Mode based on prescriptions ("Jumlah Resep")
+        const recipeCounts: { [cat: string]: number } = {
+          "Narkotika": 0,
+          "Psikotropika": 0,
+          "Obat-obat Tertentu": 0,
+          "Resep Biasa": 0
         };
-      }).sort((a, b) => b.totalJumlah - a.totalJumlah); // Sort by quantity descending
+
+        monthsMap[mKey].prescriptions.forEach((p) => {
+          const cat = getPrescriptionCategory(p);
+          recipeCounts[cat] = (recipeCounts[cat] || 0) + 1;
+        });
+
+        const totalRecipes = monthsMap[mKey].prescriptionCount;
+        totalQuantity = totalRecipes;
+
+        categories = Object.entries(recipeCounts).map(([cat, count]) => {
+          return {
+            kategori: cat,
+            count: count,
+            totalJumlah: count,
+            percentage: totalRecipes > 0 ? Math.round((count / totalRecipes) * 100) : 0
+          };
+        })
+        .filter(catSpec => catSpec.count > 0)
+        .sort((a, b) => b.totalJumlah - a.totalJumlah);
+      } else {
+        // Mode based on medicine counts ("Jumlah Obat")
+        totalQuantity = Object.values(monthsMap[mKey].medicines).reduce((sum, item) => sum + item.totalQty, 0);
+
+        categories = Object.entries(monthsMap[mKey].medicines).map(([cat, detail]) => {
+          return {
+            kategori: cat,
+            count: detail.count,
+            totalJumlah: detail.totalQty,
+            percentage: totalQuantity > 0 ? Math.round((detail.totalQty / totalQuantity) * 100) : 0
+          };
+        }).sort((a, b) => b.totalJumlah - a.totalJumlah);
+      }
 
       return {
         monthKey: mKey,
@@ -97,7 +153,7 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
 
     // Sort months descending (latest month first)
     return list.sort((a, b) => b.monthKey.localeCompare(a.monthKey));
-  }, [prescriptions]);
+  }, [prescriptions, analyticsMetric]);
 
   // Handle selected month state
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>("");
@@ -352,6 +408,21 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
       .sort((a, b) => b.jumlah - a.jumlah);
   };
 
+  // Find all prescriptions under a given category for the selected active month
+  const getPrescriptionsInCategory = (categoryName: string) => {
+    if (!activeStats) return [];
+    
+    // Filter prescriptions matching selected month
+    const matchingPrescriptions = prescriptions.filter(
+      (p) => p.date && p.date.substring(0, 7) === activeStats.monthKey
+    );
+    
+    return matchingPrescriptions.filter((p) => {
+      const cat = getPrescriptionCategory(p);
+      return cat === categoryName;
+    });
+  };
+
   // Auto-set the latest month if no month is selected or selected month is invalid
   const activeStats = useMemo(() => {
     if (monthlyStatsList.length === 0) return null;
@@ -370,13 +441,19 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
   const chartData = useMemo(() => {
     if (!activeStats) return [];
     
-    // Sort by quantity descending for professional presentation in BarChart
-    return activeStats.categories.map((catSpec) => ({
-      name: catSpec.kategori.split(" (")[0], // Trim long category suffix for neat layout
-      "Kuantitas Obat": catSpec.totalJumlah,
-      "Macam Obat": catSpec.count,
-    }));
-  }, [activeStats]);
+    if (analyticsMetric === "resep") {
+      return activeStats.categories.map((catSpec) => ({
+        name: catSpec.kategori,
+        "Jumlah Resep": catSpec.totalJumlah,
+      }));
+    } else {
+      return activeStats.categories.map((catSpec) => ({
+        name: catSpec.kategori.split(" (")[0], // Trim long category suffix for neat layout
+        "Kuantitas Obat": catSpec.totalJumlah,
+        "Macam Obat": catSpec.count,
+      }));
+    }
+  }, [activeStats, analyticsMetric]);
 
   // Aggregate daily prescription counts for the selected month vs previous month side-by-side
   const comparisonData = useMemo(() => {
@@ -508,80 +585,137 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Chart Column */}
           <div className="lg:col-span-2 bg-white border-2 border-brand-light p-5 rounded-2xl space-y-4 shadow-[0_4px_24px_-4px_rgba(0,59,70,0.05)]">
-            <div className="flex items-center justify-between border-b border-brand-light/30 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-brand-light/30 pb-3 gap-2">
               <h3 className="text-xs font-extrabold text-[#003b46] uppercase tracking-wider flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-brand-medium" />
                 Grafik Konsumsi Kategori: {activeStats.monthName}
               </h3>
-              <span className="text-[9px] uppercase font-bold tracking-wider text-slate-450">
-                Unit: Butir / Tablet / Pcs
-              </span>
+              
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="bg-slate-100 dark:bg-[#071c21] p-0.5 rounded-xl border border-slate-200 dark:border-[#0f3e46]/30 flex relative">
+                  <button
+                    onClick={() => {
+                      setAnalyticsMetric("obat");
+                      setSelectedCategory(null);
+                    }}
+                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all duration-200 cursor-pointer relative z-10 ${
+                      analyticsMetric === "obat"
+                        ? "text-white"
+                        : "text-slate-500 hover:text-[#003b46] dark:text-slate-400"
+                    }`}
+                  >
+                    {analyticsMetric === "obat" && (
+                      <motion.span
+                        layoutId="activeMetricBg"
+                        className="absolute inset-0 bg-brand-medium rounded-lg -z-10"
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                    Berdasarkan Jumlah Obat
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAnalyticsMetric("resep");
+                      setSelectedCategory(null);
+                    }}
+                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all duration-200 cursor-pointer relative z-10 ${
+                      analyticsMetric === "resep"
+                        ? "text-white"
+                        : "text-slate-500 hover:text-[#003b46] dark:text-slate-400"
+                    }`}
+                  >
+                    {analyticsMetric === "resep" && (
+                      <motion.span
+                        layoutId="activeMetricBg"
+                        className="absolute inset-0 bg-brand-medium rounded-lg -z-10"
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                    Berdasarkan Jumlah Resep
+                  </button>
+                </div>
+
+                <span className="text-[9px] uppercase font-bold tracking-wider text-slate-450 hidden sm:inline">
+                  Unit: {analyticsMetric === "resep" ? "Lembar Resep" : "Butir / Tablet / Pcs"}
+                </span>
+              </div>
             </div>
 
-            {/* Recharts container */}
-            <div className="h-72 w-full">
-              {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={chartData}
-                    margin={{ top: 20, right: 10, left: -25, bottom: 5 }}
-                    barGap={6}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#fdf0d5" vertical={false} />
-                    <XAxis 
-                      dataKey="name" 
-                      stroke="#07575b" 
-                      fontSize={10} 
-                      tickLine={false}
-                      axisLine={false}
-                      dy={8}
-                    />
-                    <YAxis 
-                      stroke="#07575b" 
-                      fontSize={10} 
-                      tickLine={false}
-                      axisLine={false}
-                      allowDecimals={false}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#fdf0d5",
-                        borderColor: "#dfd1af",
-                        borderRadius: "12px",
-                        color: "#003b46",
-                        fontSize: "12px",
-                        fontWeight: "700",
-                        boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05)"
-                      }}
-                      itemStyle={{ color: "#003b46" }}
-                    />
-                    <Legend 
-                      verticalAlign="top" 
-                      height={36} 
-                      iconType="circle"
-                      iconSize={8}
-                      wrapperStyle={{ fontSize: "11px", color: "#07575b", fontWeight: "600" }}
-                    />
-                    <Bar 
-                      dataKey="Kuantitas Obat" 
-                      fill="#07575b" 
-                      radius={[6, 6, 0, 0]} 
-                      barSize={32}
-                    >
-                      {chartData.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={colorsList[index % colorsList.length]} 
+            {/* Recharts container with transition */}
+            <div className="h-72 w-full overflow-hidden">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={analyticsMetric}
+                  initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -12, scale: 0.98 }}
+                  transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1.0] }}
+                  className="w-full h-full"
+                >
+                  {chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={chartData}
+                        margin={{ top: 20, right: 10, left: -25, bottom: 5 }}
+                        barGap={6}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#fdf0d5" vertical={false} />
+                        <XAxis 
+                          dataKey="name" 
+                          stroke="#07575b" 
+                          fontSize={10} 
+                          tickLine={false}
+                          axisLine={false}
+                          dy={8}
                         />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-full text-slate-400 text-xs">
-                  Tidak ada data untuk dirender
-                </div>
-              )}
+                        <YAxis 
+                          stroke="#07575b" 
+                          fontSize={10} 
+                          tickLine={false}
+                          axisLine={false}
+                          allowDecimals={false}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "#fdf0d5",
+                            borderColor: "#dfd1af",
+                            borderRadius: "12px",
+                            color: "#003b46",
+                            fontSize: "12px",
+                            fontWeight: "700",
+                            boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05)"
+                          }}
+                          itemStyle={{ color: "#003b46" }}
+                        />
+                        <Legend 
+                          verticalAlign="top" 
+                          height={36} 
+                          iconType="circle"
+                          iconSize={8}
+                          wrapperStyle={{ fontSize: "11px", color: "#07575b", fontWeight: "600" }}
+                        />
+                        <Bar 
+                          dataKey={analyticsMetric === "resep" ? "Jumlah Resep" : "Kuantitas Obat"} 
+                          fill="#07575b" 
+                          radius={[6, 6, 0, 0]} 
+                          barSize={32}
+                        >
+                          {chartData.map((entry, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={colorsList[index % colorsList.length]} 
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-slate-400 text-xs">
+                      Tidak ada data untuk dirender
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
             </div>
           </div>
 
@@ -596,7 +730,8 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
               <div className="space-y-3 max-h-[30rem] overflow-y-auto pr-1">
                 {activeStats.categories.map((cat, idx) => {
                   const isSelected = selectedCategory === cat.kategori;
-                  const categoryDrugs = isSelected ? getMedicinesInCategory(cat.kategori) : [];
+                  const categoryDrugs = isSelected && analyticsMetric === "obat" ? getMedicinesInCategory(cat.kategori) : [];
+                  const categoryPrescriptions = isSelected && analyticsMetric === "resep" ? getPrescriptionsInCategory(cat.kategori) : [];
                   
                   return (
                     <div 
@@ -626,13 +761,19 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
                       </div>
 
                       <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                        <span>Macam Obat: {cat.count}</span>
-                        <span className="text-brand-medium">Total: {cat.totalJumlah} pcs</span>
+                        {analyticsMetric === "resep" ? (
+                          <span>Jumlah: {cat.totalJumlah} resep</span>
+                        ) : (
+                          <>
+                            <span>Macam Obat: {cat.count}</span>
+                            <span className="text-brand-medium">Total: {cat.totalJumlah} pcs</span>
+                          </>
+                        )}
                       </div>
 
                       {/* Micro interaction indicator */}
                       <div className="text-[9px] text-[#07575b] font-black flex items-center justify-end gap-0.5 mt-0.5 uppercase tracking-tighter">
-                        {isSelected ? "▲ Tutup Detail" : "▼ Klik Lihat Rincian Obat"}
+                        {isSelected ? "▲ Tutup Detail" : (analyticsMetric === "resep" ? "▼ Klik Lihat Rincian Resep" : "▼ Klik Lihat Rincian Obat")}
                       </div>
 
                       {/* Expandable medicine breakdown details */}
@@ -641,19 +782,39 @@ export const MonthlyAnalytics: React.FC<MonthlyAnalyticsProps> = ({ prescription
                           className="mt-2 pt-2 border-t border-brand-light/50 space-y-1.5"
                           onClick={(e) => e.stopPropagation()} // Prevent closing when clicking within details
                         >
-                          {categoryDrugs.length > 0 ? (
-                            <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                              {categoryDrugs.map((drug, dIdx) => (
-                                <div key={dIdx} className="flex items-center justify-between text-[11px] bg-white py-1.5 px-2.5 rounded-lg border border-brand-light/30">
-                                  <span className="font-bold text-slate-700">{drug.nama}</span>
-                                  <span className="font-black text-brand-medium shrink-0 bg-brand-light/20 px-1.5 py-0.5 rounded">
-                                    {drug.jumlah} pcs
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
+                          {analyticsMetric === "obat" ? (
+                            categoryDrugs.length > 0 ? (
+                              <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                                {categoryDrugs.map((drug, dIdx) => (
+                                  <div key={dIdx} className="flex items-center justify-between text-[11px] bg-white py-1.5 px-2.5 rounded-lg border border-brand-light/30">
+                                    <span className="font-bold text-slate-700">{drug.nama}</span>
+                                    <span className="font-black text-brand-medium shrink-0 bg-brand-light/20 px-1.5 py-0.5 rounded">
+                                      {drug.jumlah} pcs
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-slate-400 italic">Tidak ada obat terekam dalam kategori ini.</p>
+                            )
                           ) : (
-                            <p className="text-[10px] text-slate-400 italic">Tidak ada obat terekam dalam kategori ini.</p>
+                            categoryPrescriptions.length > 0 ? (
+                              <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                                {categoryPrescriptions.map((p, pIdx) => (
+                                  <div key={pIdx} className="flex flex-col text-[11px] bg-white py-1.5 px-2.5 rounded-lg border border-brand-light/30 space-y-0.5">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-bold text-slate-700">{p.prescriptionNo || "Tanpa No Resep"}</span>
+                                      <span className="font-mono text-[9px] text-slate-400">{p.date}</span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500">
+                                      Dokter: <span className="font-semibold text-[#003b46]">{p.doctor}</span> • Pasien: <span className="font-semibold text-[#003b46]">{p.patientName}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-slate-400 italic">Tidak ada resep terekam dalam kategori ini.</p>
+                            )
                           )}
                         </div>
                       )}

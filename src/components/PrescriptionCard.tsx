@@ -49,6 +49,24 @@ export const PrescriptionCard: React.FC<PrescriptionCardProps> = ({
     }
   };
 
+  const hasNarkotika = prescription.medicines.some(m => m.kategori?.toLowerCase() === "narkotika");
+  const hasPsikotropika = prescription.medicines.some(m => m.kategori?.toLowerCase() === "psikotropika");
+  const hasOot = prescription.medicines.some(m => m.kategori?.toLowerCase() === "obat-obat tertentu");
+
+  let recipeCategory = "";
+  let categoryStyles = "";
+
+  if (hasNarkotika) {
+    recipeCategory = "Narkotika";
+    categoryStyles = "bg-white text-red-700 border-red-400 dark:bg-slate-950 dark:text-red-400 dark:border-red-900/80";
+  } else if (hasPsikotropika) {
+    recipeCategory = "Psikotropika";
+    categoryStyles = "bg-white text-amber-700 border-amber-400 dark:bg-slate-950 dark:text-amber-400 dark:border-amber-900/80";
+  } else if (hasOot) {
+    recipeCategory = "Obat-obat Tertentu";
+    categoryStyles = "bg-white text-blue-700 border-blue-400 dark:bg-slate-950 dark:text-blue-400 dark:border-blue-900/80";
+  }
+
   return (
     <div
       id={`prescription-card-${prescription.id}`}
@@ -123,12 +141,21 @@ export const PrescriptionCard: React.FC<PrescriptionCardProps> = ({
             </div>
           </div>
 
-          {/* Quantity pill */}
-          <span className={`bg-brand-pink/25 text-[#003b46] shrink-0 uppercase tracking-wider font-extrabold rounded-full border border-brand-pink/40 shadow-xs ${
-            isCompact ? "text-[9px] px-2 py-1" : "text-[10px] px-3 py-1.5"
-          }`}>
-            {prescription.medicines.length} Obat
-          </span>
+          {/* Quantity pill & Recipe Category */}
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <span className={`bg-brand-pink/25 text-[#003b46] shrink-0 uppercase tracking-wider font-extrabold rounded-full border border-brand-pink/40 shadow-xs ${
+              isCompact ? "text-[9px] px-2 py-1" : "text-[10px] px-3 py-1.5"
+            }`}>
+              {prescription.medicines.length} Obat
+            </span>
+            {recipeCategory && (
+              <span className={`shrink-0 font-extrabold uppercase tracking-wider rounded-full border shadow-xs text-center ${
+                isCompact ? "text-[8px] px-2 py-0.5" : "text-[9px] px-2.5 py-1"
+              } ${categoryStyles}`}>
+                {recipeCategory}
+              </span>
+            )}
+          </div>
         </div>
 
           {/* Notes (if exists) */}

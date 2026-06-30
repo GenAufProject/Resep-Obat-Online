@@ -1345,12 +1345,12 @@ export default function App() {
                       <button
                         id="btn-add-prescription"
                         onClick={handleTriggerCreate}
-                        className="flex items-center gap-1.5 bg-[#8fc8be] hover:bg-[#7db9af] text-slate-850 text-xs font-bold py-1.5 px-4 rounded-lg transition border border-[#7db9af]/35 shadow-sm cursor-pointer"
+                        className="relative flex items-center justify-center gap-1.5 bg-[#8fc8be] text-[#003b46] font-extrabold text-xs py-2 px-4 rounded-xl border-2 border-[#003b46] dark:border-[#8fc8be] shadow-[4px_4px_0px_0px_rgba(0,59,70,1)] dark:shadow-[4px_4px_0px_0px_rgba(143,200,190,0.6)] hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-[5px_5px_0px_0px_rgba(0,59,70,1)] dark:hover:shadow-[5px_5px_0px_0px_rgba(143,200,190,0.7)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none cursor-pointer transition-all duration-100 select-none"
                         title="Formulir Resep Baru (Shortcut: N)"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Tambah Resep</span>
-                        <kbd className="hidden sm:inline bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded text-[8px] font-mono leading-none">N</kbd>
+                        <kbd className="hidden sm:inline bg-[#003b46]/10 dark:bg-white/10 px-1 py-0.5 rounded text-[8px] font-mono leading-none">N</kbd>
                       </button>
                     </div>
                   </div>
@@ -1668,9 +1668,9 @@ export default function App() {
                       <button
                         id="btn-add-first-recipe"
                         onClick={handleTriggerCreate}
-                        className="bg-[#8fc8be] hover:bg-[#7db9af] text-slate-855 px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm border border-[#7db9af]/35 cursor-pointer inline-flex items-center gap-1.5"
+                        className="relative inline-flex items-center justify-center gap-1.5 bg-[#8fc8be] text-[#003b46] font-extrabold text-xs px-5 py-3 rounded-xl border-2 border-[#003b46] dark:border-[#8fc8be] shadow-[4px_4px_0px_0px_rgba(0,59,70,1)] dark:shadow-[4px_4px_0px_0px_rgba(143,200,190,0.6)] hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-[5px_5px_0px_0px_rgba(0,59,70,1)] dark:hover:shadow-[5px_5px_0px_0px_rgba(143,200,190,0.7)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none cursor-pointer transition-all duration-100 select-none"
                       >
-                        <Plus className="w-4 h-4 text-slate-800" />
+                        <Plus className="w-4 h-4" />
                         Tambah Resep Sekarang
                       </button>
                     )}

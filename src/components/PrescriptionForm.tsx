@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Medicine, Prescription, MEDICINE_CATEGORIES, getCategoryByMedicineName } from "@/src/types";
 import { Plus, Trash2, Calendar, FileText, User, Tag, HelpCircle, Save, X, Home } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 interface PrescriptionFormProps {
   initialData?: Prescription | null;
@@ -25,6 +26,7 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
     { nama: "", kategori: MEDICINE_CATEGORIES[0], dosis: "", jumlah: 10 }
   ]);
   const [errors, setErrors] = useState<string>("");
+  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
 
   const duplicatePrescription = useMemo(() => {
     if (!prescriptionNo.trim()) return null;
@@ -184,7 +186,12 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
       }
     }
 
-    // Submit
+    // Show summary popup instead of direct submission
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmSave = () => {
+    setShowConfirmModal(false);
     onSave({
       id: initialData?.id,
       date,
@@ -379,7 +386,7 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
               id="btn-add-item"
               type="button"
               onClick={handleAddMedicine}
-              className="flex items-center gap-1 bg-[#07575b]/10 hover:bg-[#07575b]/20 text-[#07575b] text-xs py-1.5 px-3 rounded-lg border border-[#07575b]/30 font-bold transition cursor-pointer"
+              className="relative flex items-center justify-center gap-1 bg-[#fdf0d5] text-[#07575b] text-xs py-1.5 px-3.5 rounded-xl border-2 border-[#07575b] dark:border-[#8fc8be] shadow-[3px_3px_0px_0px_rgba(7,87,91,1)] dark:shadow-[3px_3px_0px_0px_rgba(143,200,190,0.6)] hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-[4px_4px_0px_0px_rgba(7,87,91,1)] dark:hover:shadow-[4px_4px_0px_0px_rgba(143,200,190,0.7)] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none font-bold transition-all duration-100 cursor-pointer select-none"
             >
               <Plus className="w-3.5 h-3.5" />
               Tambah Obat Baru
@@ -537,25 +544,99 @@ export const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
         )}
 
         {/* Footer actions */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#dfd1af]/50">
+        <div className="flex items-center justify-end gap-3.5 pt-4 border-t border-[#dfd1af]/50 pb-2">
           <button
             id="btn-cancel"
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-xs font-bold text-[#07575b] hover:text-[#003b46] bg-white hover:bg-neutral-50 rounded-xl transition cursor-pointer border border-[#dfd1af] shadow-xs"
+            className="relative px-5 py-2.5 text-xs font-extrabold text-[#07575b] dark:text-[#fdf0d5] bg-white dark:bg-[#081d22] rounded-xl border-2 border-[#dfd1af] dark:border-[#07575b] shadow-[4px_4px_0px_0px_rgba(223,209,175,1)] dark:shadow-[4px_4px_0px_0px_rgba(7,87,91,0.6)] hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-[5px_5px_0px_0px_rgba(223,209,175,1)] dark:hover:shadow-[5px_5px_0px_0px_rgba(7,87,91,0.7)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 cursor-pointer select-none"
           >
             Batal
           </button>
           <button
             id="btn-save"
             type="submit"
-            className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold bg-[#07575b] hover:bg-[#003b46] text-[#fdf0d5] rounded-xl shadow-md border border-[#003b46]/40 transition cursor-pointer"
+            className="relative flex items-center justify-center gap-1.5 px-6 py-2.5 text-xs font-extrabold bg-[#07575b] text-[#fdf0d5] rounded-xl border-2 border-[#003b46] dark:border-[#8fc8be] shadow-[4px_4px_0px_0px_rgba(0,59,70,1)] dark:shadow-[4px_4px_0px_0px_rgba(143,200,190,0.6)] hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-[5px_5px_0px_0px_rgba(0,59,70,1)] dark:hover:shadow-[5px_5px_0px_0px_rgba(143,200,190,0.7)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 cursor-pointer select-none"
           >
             <Save className="w-3.5 h-3.5" />
             {initialData ? "Simpan Perubahan" : "Simpan Resep"}
           </button>
         </div>
       </form>
+
+      {/* Confirmation Summary Modal Popup */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-[#dfd1af] p-5 sm:p-6 rounded-2xl max-w-sm w-full shadow-2xl relative flex flex-col gap-4 text-[#003b46]"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between border-b border-[#dfd1af]/40 pb-3">
+                <div className="space-y-0.5">
+                  <span className="text-[9px] font-extrabold text-[#07575b] uppercase tracking-widest block">Ringkasan Input Resep</span>
+                  <h3 className="text-sm font-extrabold text-[#003b46]">
+                    Apakah data ini sudah benar?
+                  </h3>
+                </div>
+              </div>
+
+              {/* Summary Details */}
+              <div className="space-y-3 text-xs">
+                <div className="bg-[#fdf0d5]/40 p-3 rounded-xl border border-[#dfd1af]/50 space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Nomor Resep:</span>
+                    <span className="font-mono font-bold text-[#003b46]">{prescriptionNo}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Nama Dokter:</span>
+                    <span className="font-bold text-[#003b46] truncate max-w-[180px]">{doctor.trim() || "Tanpa Nama Dokter"}</span>
+                  </div>
+                </div>
+
+                {/* Medicines List summary */}
+                <div className="space-y-1.5">
+                  <span className="text-[9px] text-[#07575b] font-bold block uppercase tracking-wider">Daftar Obat & Jumlah</span>
+                  <div className="space-y-1 max-h-36 overflow-y-auto pr-1 custom-scrollbar">
+                    {medicines.map((m, index) => (
+                      <div 
+                        key={index}
+                        className="flex items-center justify-between p-2 bg-[#fdf0d5]/20 rounded-lg border border-[#dfd1af]/30 text-xs"
+                      >
+                        <span className="font-bold text-slate-700 truncate max-w-[180px]">{m.nama.trim() || "Tanpa Nama Obat"}</span>
+                        <span className="font-extrabold text-[#003b46] bg-[#07575b]/10 px-2 py-0.5 rounded text-[10px]">
+                          {m.jumlah} pcs
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons: OK atau Kembali */}
+              <div className="grid grid-cols-2 gap-4 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="relative w-full bg-white dark:bg-[#081d22] text-[#07575b] text-xs font-extrabold py-2.5 rounded-xl border-2 border-[#dfd1af] dark:border-[#07575b] shadow-[4px_4px_0px_0px_rgba(223,209,175,1)] dark:shadow-[4px_4px_0px_0px_rgba(7,87,91,0.6)] hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-[5px_5px_0px_0px_rgba(223,209,175,1)] dark:hover:shadow-[5px_5px_0px_0px_rgba(7,87,91,0.7)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 cursor-pointer text-center select-none"
+                >
+                  Kembali
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSave}
+                  className="relative w-full bg-[#07575b] text-[#fdf0d5] text-xs font-extrabold py-2.5 rounded-xl border-2 border-[#003b46] dark:border-[#8fc8be] shadow-[4px_4px_0px_0px_rgba(0,59,70,1)] dark:shadow-[4px_4px_0px_0px_rgba(143,200,190,0.6)] hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-[5px_5px_0px_0px_rgba(0,59,70,1)] dark:hover:shadow-[5px_5px_0px_0px_rgba(143,200,190,0.7)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 cursor-pointer text-center select-none"
+                >
+                  OK
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

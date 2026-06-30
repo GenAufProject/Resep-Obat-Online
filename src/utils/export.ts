@@ -584,3 +584,171 @@ export function exportSearchResultsToExcel(
   document.body.removeChild(link);
 }
 
+/**
+ * Exports a summary report of doctors and medicine distribution in structured A4 PDF tables.
+ */
+export function exportDoctorMedicineSummaryToPDF(
+  doctors: Array<{ name: string; count: number; list: any[] }>,
+  medicinesByCategory: Array<{ category: string; meds: Array<{ name: string; totalQty: number; rxCount: number; list: any[] }> }>
+) {
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4"
+  });
+
+  const totalRx = doctors.reduce((sum, d) => sum + d.count, 0);
+  let y = 20;
+
+  // Header Title
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(7, 87, 91); // Teal brand color
+  doc.text("Laporan Ringkasan Relasi Dokter & Obat", 14, y);
+  y += 8;
+
+  // Subtitle
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139); // Slate-500
+  const currentDateStr = new Date().toLocaleDateString("id-ID", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+  doc.text(`Dicetak pada: ${currentDateStr}`, 14, y);
+  y += 6;
+  
+  // Total statistics summary line
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42); // Slate-900
+  const totalMedsCount = medicinesByCategory.reduce((sum, cat) => sum + cat.meds.length, 0);
+  doc.text(`Ringkasan: ${doctors.length} Dokter  |  ${totalMedsCount} Sediaan Obat  |  Total ${totalRx} Transaksi Resep`, 14, y);
+  y += 10;
+
+  // SECTION 1: TABEL DOKTER
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(7, 87, 91);
+  doc.text("I. Tabel Ringkasan Aktivitas Dokter Penulis Resep", 14, y);
+  y += 6;
+
+  const drawDoctorHeader = (currentY: number) => {
+    doc.setFillColor(7, 87, 91); // Teal
+    doc.rect(14, currentY, 182, 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text("NO", 17, currentY + 5.5);
+    doc.text("NAMA DOKTER", 32, currentY + 5.5);
+    doc.text("JUMLAH RESEP DITULIS", 112, currentY + 5.5);
+    doc.text("PERSENTASE KONTRIBUSI", 154, currentY + 5.5);
+  };
+
+  drawDoctorHeader(y);
+  y += 8;
+
+  doc.setTextColor(30, 41, 59);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+
+  doctors.forEach((docItem, index) => {
+    // Check overflow
+    if (y > 270) {
+      doc.addPage();
+      y = 20;
+      drawDoctorHeader(y);
+      y += 8;
+      doc.setTextColor(30, 41, 59);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+    }
+
+    const percentage = totalRx > 0 ? ((docItem.count / totalRx) * 100).toFixed(1) : "0.0";
+    
+    // Draw row content
+    doc.text(String(index + 1), 17, y + 5.5);
+    doc.text(docItem.name, 32, y + 5.5);
+    doc.text(`${docItem.count} Resep`, 112, y + 5.5);
+    doc.text(`${percentage}%`, 154, y + 5.5);
+
+    // Separator line
+    doc.setDrawColor(226, 232, 240); // Slate-200
+    doc.setLineWidth(0.2);
+    doc.line(14, y + 8, 196, y + 8);
+    
+    y += 8;
+  });
+
+  y += 10; // spacing between sections
+
+  // SECTION 2: TABEL OBAT
+  // Check overflow before starting a section
+  if (y > 250) {
+    doc.addPage();
+    y = 20;
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(7, 87, 91);
+  doc.text("II. Tabel Ringkasan Distribusi Obat per Kategori", 14, y);
+  y += 6;
+
+  const drawMedicineHeader = (currentY: number) => {
+    doc.setFillColor(0, 59, 70); // Dark Navy Teal
+    doc.rect(14, currentY, 182, 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text("NO", 17, currentY + 5.5);
+    doc.text("NAMA SEDIAAN OBAT", 32, currentY + 5.5);
+    doc.text("KATEGORI MEDIS", 102, currentY + 5.5);
+    doc.text("TOTAL DISKUSI/QTY", 142, currentY + 5.5);
+    doc.text("JML RESEP", 177, currentY + 5.5);
+  };
+
+  drawMedicineHeader(y);
+  y += 8;
+
+  doc.setTextColor(30, 41, 59);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+
+  let medIndex = 1;
+  medicinesByCategory.forEach((catGroup) => {
+    catGroup.meds.forEach((medItem) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+        drawMedicineHeader(y);
+        y += 8;
+        doc.setTextColor(30, 41, 59);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+      }
+
+      doc.text(String(medIndex), 17, y + 5.5);
+      doc.text(medItem.name, 32, y + 5.5);
+      doc.text(catGroup.category, 102, y + 5.5);
+      doc.text(`${medItem.totalQty} pcs`, 142, y + 5.5);
+      doc.text(`${medItem.rxCount} Resep`, 177, y + 5.5);
+
+      doc.setDrawColor(226, 232, 240); // Slate-200
+      doc.setLineWidth(0.2);
+      doc.line(14, y + 8, 196, y + 8);
+
+      y += 8;
+      medIndex++;
+    });
+  });
+
+  const fileStamp = new Date().toISOString().substring(0, 10);
+  doc.save(`Ringkasan_Dokter_Obat_${fileStamp}.pdf`);
+}
+
+
